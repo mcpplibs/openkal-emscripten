@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-emscripten"
-version     = "0.1.0"
+version     = "0.1.1"
 description = "An implementation of openkal for Emscripten, written ABOVE a C library rather than beneath one, because on this platform there is no kernel to issue calls to."
 license     = "Apache-2.0"
 
@@ -59,29 +59,24 @@ default = []
 # capability is not a property of the machine this runs on, and it is not
 # discoverable at run time by anything this package can ask.
 #
-# Declaring it as a feature puts the decision where the rest of the link is
-# decided, and `kal_task_props` reports the consequence: with this feature the
-# word carries KAL_TASK_PROP_PARALLEL, and without it the interface is still
-# provided and `kal_task_start` reports kal_err_not_supported -- which is
-# clause 6.2's third time, a capability word read before use, rather than the
-# shape the specification forbids.
+# THE SWITCH IS THE ARTEFACT'S, SO THE ROOT MANIFEST STATES IT. `-pthread`
+# changes the module configuration of every translation unit in the link, the
+# specification package's included, so it cannot be a flag of this package's
+# own units. mcpp 2026.9.12.2 carries it as a typed member of the root's target
+# table,
 #
-# `-pthread` ON THIS PACKAGE'S OWN UNITS, AND NOT A DEFINE OF ITS OWN. Passing
-# the switch is what makes Emscripten define `__EMSCRIPTEN_PTHREADS__`, so the
-# code keys on that rather than on a name this manifest invented: one
-# mechanism, and it is the compiler's own answer to "was this compiled with
-# threads" instead of a second word that could disagree with it.
+#   [target.'cfg(os = "emscripten")'.abi]
+#   threads = true
 #
-# THE LINK HALF IS THE CONSUMER'S, AND THAT IS A LIMITATION WORTH NAMING. A
-# feature contributes build INPUTS -- sources, defines, flags -- and mcpp's
-# feature axis has no `ldflags`, so this cannot put `-pthread` on the link
-# line. A project that activates this feature must also write
+# which reaches the standard library module, every translation unit and the
+# link. This feature states that it needs the switch: a build that activates it
+# without the table is refused before anything compiles, naming the feature and
+# the table.
 #
-#   [build]
-#   ldflags = ["-pthread"]
-#
-# and a project that forgets fails at LINK naming the pthread symbols, which
-# is a loud failure rather than a silent single-threaded program.
-threads = { flags = [
-  { glob = "src/**", cxxflags = ["-pthread"] },
-] }
+# `kal_task_props` reports the consequence: with the switch the word carries
+# KAL_TASK_PROP_PARALLEL, and without it `kal_task_start` reports
+# kal_err_not_supported -- clause 6.2's third time, a capability word read
+# before use. The code keys on `__EMSCRIPTEN_PTHREADS__`, which the compiler
+# defines when `-pthread` is passed: one mechanism, and it is the compiler's own
+# answer to "was this compiled with threads".
+threads = { requires_abi = { threads = true } }

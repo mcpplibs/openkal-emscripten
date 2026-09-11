@@ -61,30 +61,48 @@ So the interface is carried by a feature:
 
 ```toml
 [dependencies]
-openkal-emscripten = { version = "0.1.0", features = ["threads"] }
+openkal-emscripten = { version = "0.1.1", features = ["threads"] }
 ```
 
 Without it, `src/threads/task.cpp` compiles to nothing, the eight `kal_task_*`
 symbols do not exist, and `kal_interfaces()` does not claim the interface --
 the same treatment the three absent interfaces get, for the same reason.
 
-**This feature is not yet usable end to end, and the limitation is the build
-tool's rather than this package's.** `-pthread` changes the module
-configuration of *every* translation unit in the link, including the
-specification package's, and mcpp has no channel for a flag that applies to a
-whole dependency graph: a feature contributes sources, defines and per-glob
-compile flags, and `[build] ldflags` reaches the root package only. Measured
-2026-09-11 with the feature active and `-pthread` on the consumer:
+**The switch belongs to the artefact, and the root manifest states it.**
+`-pthread` changes the module configuration of *every* translation unit in the
+link, including the specification package's, so it cannot be a flag of this
+package's own units. With mcpp 2026.9.12.2 or later, the consumer writes
+
+```toml
+[target.'cfg(os = "emscripten")'.abi]
+threads = true
+```
+
+and the switch reaches the standard library module, every translation unit of
+every package, and the link. The `threads` feature states that it needs the
+switch (`requires_abi = { threads = true }`), so a consumer that activates the
+feature without the table is refused before anything compiles, naming the
+feature and the table. Measured 2026-09-12 with emsdk 6.0.9 and a development
+build of mcpp 2026.9.12.2: with the table, a program that starts a task and
+joins it exits 0 under node, and without it the build stops at
+
+```
+error: `openkal-emscripten` requires the artefact's ABI to have threads (feature `threads`), and this build does not state it.
+```
+
+An earlier version of this section, measured 2026-09-11, concluded that mcpp had
+no channel for a flag that applies to a whole dependency graph. What had been
+measured was `-pthread` in the consumer's per-package `cxxflags`:
 
 ```
 error: POSIX thread support was disabled in precompiled file
        '.../pcm.cache/openkal.types.pcm' but is currently enabled
 ```
 
-which is the specification package's module, compiled without the switch. The
-interface word is already correct for a link that manages it; closing the gap
-is an engine change of the same shape as the existing whole-graph runtime
-flags, and it is recorded rather than worked around.
+That channel does not reach the specification package's module. A graph-wide
+channel did exist (`[build] dialect_cxxflags`); what was missing was a way to
+scope it to one target and to let this feature state its requirement, which the
+typed table provides.
 
 ## Conformance
 
@@ -128,7 +146,7 @@ implementation in its source:
 openkal = "0.12.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.1.0"
+openkal-emscripten = "0.1.1"
 ```
 
 ## Licence
