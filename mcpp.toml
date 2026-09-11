@@ -1,0 +1,87 @@
+[package]
+namespace   = "mcpplibs"
+name        = "openkal-emscripten"
+version     = "0.1.0"
+description = "An implementation of openkal for Emscripten, written ABOVE a C library rather than beneath one, because on this platform there is no kernel to issue calls to."
+license     = "Apache-2.0"
+
+# The layer this package supplies, in the vocabulary the engine resolves.
+#
+# `mcpp:kernel-abi` names the platform interface a C library sits on. Here that
+# reading is inverted and the declaration is still correct: this package answers
+# to `openkal` for programs that use openkal, and what it is written on happens
+# to be a C library. Clause 2 permits it in as many words --- "an implementation
+# may be built upon a C library, beneath one, or without one" --- and this is
+# the first implementation in the ecosystem to take the first of the three.
+provides    = ["mcpp:kernel-abi=openkal"]
+authors     = ["mcpplibs"]
+repo        = "https://github.com/mcpplibs/openkal-emscripten"
+
+[dependencies]
+openkal = "0.12.0"
+
+[build]
+# THE DIALECT FLAGS ARE THE SAME AS EVERY OTHER IMPLEMENTATION'S AND THE REASON
+# IS NOT. Elsewhere they exist because no C library is available to unwind
+# through; here one is. They stay because a C entry point must not let an
+# exception escape either way, and because a module interface records the
+# dialect it was compiled under: a translation unit compiled without exceptions
+# cannot import one compiled with them, and the conformance tests import the
+# specification's modules as consumers rather than as parts of this package.
+#
+# The stack protector is off for the ordinary reason a forwarding layer turns it
+# off: it buys nothing over a call that immediately enters libc, and it costs a
+# thread-local read on every function in the surface.
+flags = [
+  { glob = "src/**", cxxflags = ["-fno-exceptions", "-fno-rtti",
+                                 "-fno-stack-protector"] },
+]
+
+# THE SOURCE SET IS ALL OF `src/`, AND THE FEATURE SUBTRACTS FROM IT.
+#
+# `[features].<name>.sources` is not an addition to the source set -- a glob
+# listed there is EXCLUDED from the default build and compiled only when the
+# feature is active. So `src/threads/task.cpp` has to be matched here for the
+# feature to be able to gate it; restricting this list to `src/*.cpp` removed
+# it from both, and the task interface then existed in neither link. Measured:
+# `task.o` appeared in no build directory, with and without the feature.
+sources = ["src/**/*.cpp"]
+
+[features]
+default = []
+
+# THREADS ARE A LINK-TIME DECISION ON THIS PLATFORM, WHICH NO OTHER
+# IMPLEMENTATION HAS TO SAY.
+#
+# Emscripten compiles `pthread_create` either way; whether it can create
+# anything depends on `-pthread`, which selects a different C library build and
+# a different loader contract (SharedArrayBuffer, a worker pool). So the
+# capability is not a property of the machine this runs on, and it is not
+# discoverable at run time by anything this package can ask.
+#
+# Declaring it as a feature puts the decision where the rest of the link is
+# decided, and `kal_task_props` reports the consequence: with this feature the
+# word carries KAL_TASK_PROP_PARALLEL, and without it the interface is still
+# provided and `kal_task_start` reports kal_err_not_supported -- which is
+# clause 6.2's third time, a capability word read before use, rather than the
+# shape the specification forbids.
+#
+# `-pthread` ON THIS PACKAGE'S OWN UNITS, AND NOT A DEFINE OF ITS OWN. Passing
+# the switch is what makes Emscripten define `__EMSCRIPTEN_PTHREADS__`, so the
+# code keys on that rather than on a name this manifest invented: one
+# mechanism, and it is the compiler's own answer to "was this compiled with
+# threads" instead of a second word that could disagree with it.
+#
+# THE LINK HALF IS THE CONSUMER'S, AND THAT IS A LIMITATION WORTH NAMING. A
+# feature contributes build INPUTS -- sources, defines, flags -- and mcpp's
+# feature axis has no `ldflags`, so this cannot put `-pthread` on the link
+# line. A project that activates this feature must also write
+#
+#   [build]
+#   ldflags = ["-pthread"]
+#
+# and a project that forgets fails at LINK naming the pthread symbols, which
+# is a loud failure rather than a silent single-threaded program.
+threads = { flags = [
+  { glob = "src/**", cxxflags = ["-pthread"] },
+] }

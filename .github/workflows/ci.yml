@@ -1,0 +1,304 @@
+name: CI
+
+# What this workflow asserts.
+#
+#   conformance   the specification's suite runs against this implementation,
+#                 under node, for the twelve interfaces it provides, and every
+#                 observation holds
+#   surface       the exported names are exactly the eighty-six the
+#                 specification lists for those twelve groups, and nothing else
+#                 beginning with kal_
+#   absence       a program that uses one of the three interfaces this platform
+#                 does not have fails at LINK naming the symbol, which is
+#                 clause 6.2's second time and is the mechanism rather than a
+#                 defect
+#   task gating   the eight kal_task_* symbols exist in a `-pthread` link and
+#                 in no other, and the interfaces word follows the link
+#
+# ONE TOOLCHAIN, NOT TWO, AND THAT IS A PROPERTY OF THE TARGET RATHER THAN A
+# GAP. Every other implementation here is built by a matrix of compiler
+# families, because an implementation is a contract's evidence and a contract
+# that holds only under one compiler is a description of that compiler. This
+# target has one compiler: `em++` IS the toolchain, and there is no second
+# family that emits wasm for Emscripten's C library.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      mcpp_ref:
+        description: "Branch of mcpp-community/mcpp to build and test against (empty = the released pin)"
+        required: false
+        default: ""
+
+env:
+  MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF }}
+  # THE CI PIN, NOT A FLOOR. Nothing here records a minimum engine for
+  # consumers. This engine is required by two facts this repository depends on:
+  # `em++`'s C compiler is `emcc` and not `em` (a C translation unit in the
+  # conformance suite does not compile without that), and the wasm target rows
+  # resolve the emsdk payload.
+  MCPP_VERSION: 2026.9.11.4
+  XLINGS_VERSION: v2026.8.17.2
+  XLINGS_NON_INTERACTIVE: '1'
+
+jobs:
+  conformance:
+    name: conformance, surface, absence, and the task gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # THE COMMITTED MANIFEST NAMES NO DIRECTORY OF ANYBODY'S MACHINE.
+      #
+      # Two scripts in the specification's repository rewrite this manifest to
+      # name a working tree, and both restore it through a trap. A trap does
+      # not fire when the process is killed, and a run by hand followed by
+      # `git add -A` then publishes a path that exists on one machine. That has
+      # happened in this ecosystem, in openkal-musl. This step runs first, so
+      # what it examines is what the commit contains.
+      - name: The committed manifest names no local directory
+        run: |
+          set -euo pipefail
+          bad=$(grep -nE '^[a-z-]+ = \{[^}]*path = "(/|[A-Za-z]:)' mcpp.toml || true)
+          if [ -n "$bad" ]; then
+            echo "::error::the committed manifest names an absolute path"
+            printf '%s\n' "$bad" | sed 's/^/        /'
+            exit 1
+          fi
+          echo "  ok  every dependency is named by version or a relative path"
+
+      - name: The specification
+        run: |
+          git clone --quiet https://github.com/mcpplibs/openkal.git .spec
+          branch='${{ github.head_ref || github.ref_name }}'
+          if git -C .spec rev-parse --verify --quiet "origin/$branch" > /dev/null; then
+            git -C .spec checkout --quiet "origin/$branch"
+            echo "the specification is at $branch"
+          else
+            echo "the specification has no $branch; its default branch is used"
+          fi
+
+      - name: Install xlings
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.sh \
+            | bash -s "$XLINGS_VERSION"
+          echo "$HOME/.xlings/subos/current/bin" >> "$GITHUB_PATH"
+
+      - name: Install mcpp
+        run: |
+          xlings update
+          # THE PIN MAY NAME THE RELEASE THIS RUN IS VALIDATING, which does not
+          # exist yet -- that is the whole point of MCPP_SOURCE_REF. Bootstrap
+          # from whatever the index has; the block below replaces it.
+          if [ -n "${MCPP_SOURCE_REF:-}" ]; then
+            xlings install mcpp -y -g
+          else
+            xlings install "mcpp@$MCPP_VERSION" -y -g
+          fi
+          mcpp --version
+          mcpp self config --mirror GLOBAL
+          # CROSS-VALIDATION: BUILD THE mcpp UNDER REVIEW AND USE THAT ONE.
+          #
+          # Empty in the ordinary run. Set it and the same job runs against
+          # that source, which is what lets an engine change be validated in a
+          # real dependency graph before it is published rather than after.
+          if [ -n "${MCPP_SOURCE_REF:-}" ]; then
+            src="$RUNNER_TEMP/mcpp-src"
+            [ -d "$src" ] || git clone --quiet --depth 1 \
+              --branch "$MCPP_SOURCE_REF" \
+              https://github.com/mcpp-community/mcpp.git "$src"
+            # The clone's own workspace pin must not decide which mcpp builds
+            # it: that pin does not move when mcpp is released, so a build
+            # inside the checkout tries to install a version the index may no
+            # longer carry.
+            rm -f "$src/.xlings.json"
+            ( cd "$src" && mcpp build --release )
+            built=$(find "$src/target" -type f \
+                    \( -name mcpp -o -name mcpp.exe \) | head -1)
+            [ -n "$built" ] || { echo "::error::mcpp did not build from $MCPP_SOURCE_REF"; exit 1; }
+            echo "$(cd "$(dirname "$built")" && pwd)" >> "$GITHUB_PATH"
+            echo "under review: $("$built" --version)  (from $MCPP_SOURCE_REF)"
+          fi
+
+      # THE TOOLCHAIN IS CHOSEN BY THE TARGET AND NOT BY THIS FILE. The
+      # `wasm32-emscripten` row pins `emsdk@6.0.9`, so naming a toolchain here
+      # would be naming the same thing twice -- and the row's pin is the thing
+      # under test.
+      - name: The emsdk payload and a runner for wasm
+        run: |
+          set -euo pipefail
+          mcpp toolchain install emsdk 6.0.9
+          xlings install node -y -g || true
+          node_bin=$(find "$HOME/.xlings" -path '*/xim-x-node/*/bin/node' | head -1)
+          [ -n "$node_bin" ] || { echo "::error::no node payload"; exit 1; }
+          echo "NODE_BIN=$node_bin" >> "$GITHUB_ENV"
+          "$node_bin" --version
+          nm_bin=$(find "$HOME/.mcpp" "$HOME/.xlings" -name llvm-nm -path '*emsdk*' | head -1)
+          [ -n "$nm_bin" ] || { echo "::error::no llvm-nm in the emsdk payload"; exit 1; }
+          echo "NM=$nm_bin" >> "$GITHUB_ENV"
+
+      # CONFORMANCE, FOR THE GROUPS THIS IMPLEMENTATION PROVIDES.
+      #
+      # The set is named rather than `full`: clause 6.1 says an implementation
+      # provides an interface in whole or not at all, and a group this platform
+      # does not have is an absence rather than a deviation. `task` is not in
+      # the set -- see the task-gate step below for why it needs a link this
+      # suite cannot currently be given.
+      - name: Every interface this platform has, examined
+        run: |
+          OPENKAL_CONFORMANCE_RUNNER="$NODE_BIN" \
+            bash .spec/tools/run-conformance.sh openkal-emscripten . \
+              core,env,time,random,fs,terminal,timeout \
+              --target wasm32-emscripten
+
+      # ABSENCE IS THE REPORT, AND THIS IS THE OBSERVATION THAT MAKES IT ONE.
+      #
+      # A program using an interface this platform does not have must fail at
+      # LINK naming the symbol. Asserted by BUILDING such a program and
+      # requiring the failure to name it -- not by grepping the sources, which
+      # would pass for an implementation that defined the symbol elsewhere.
+      - name: A program that spawns a process fails at link, naming the symbol
+        run: |
+          set -uo pipefail
+          work="$RUNNER_TEMP/absent"
+          rm -rf "$work"; mkdir -p "$work/src"
+          impl="$(pwd)"
+          # BOTH DEPENDENCIES NAMED THE SAME WAY, and this step therefore runs
+          # BEFORE the manifest is pointed at the specification's working tree.
+          # mcpp refuses a graph in which one package reaches `openkal` by path
+          # and another by version -- measured:
+          #
+          #   error: dependency 'mcpplibs.openkal' is requested as both a path
+          #          dep (by 'absent') and a version dep (by
+          #          'mcpplibs.openkal-emscripten@path'). Pick one.
+          #
+          # so the consumer uses the version this implementation's committed
+          # manifest names, which is the arrangement an ordinary consumer has.
+          cat > "$work/mcpp.toml" << TOML
+          [package]
+          name = "absent"
+          version = "0.1.0"
+
+          [dependencies]
+          openkal = "$(grep -oP '^openkal = "\K[0-9.]+' "$impl/mcpp.toml")"
+          openkal-emscripten = { path = "$impl" }
+          TOML
+          cat > "$work/src/main.cpp" << 'CPP'
+          import openkal.process;
+          import openkal.fs;
+          int main() {
+            kal_dir root{};
+            const kal_spawn how{ root, root, nullptr, nullptr, 0, 0 };
+            kal_process p{};
+            return kal_process_spawn(&how, "x", 1, nullptr, nullptr, 0,
+                                     nullptr, nullptr, 0, nullptr, &p);
+          }
+          CPP
+          out=$( cd "$work" && mcpp build --target wasm32-emscripten 2>&1 ) || true
+          # The linker's line is long; only the diagnostic is wanted.
+          printf '%s\n' "$out" | grep -E "^(error|wasm-ld)" | head -5
+          if printf '%s\n' "$out" | grep -q "kal_process_spawn"; then
+            echo "  ok  the link names the symbol this platform does not have"
+          else
+            echo "::error::the build did not fail naming kal_process_spawn"
+            exit 1
+          fi
+
+      - name: Point at the specification's working tree
+        run: |
+          # run-conformance.sh has already done this; it is repeated because a
+          # reader of this file should not have to know that.
+          sed 's|^openkal = .*$|openkal = { path = ".spec" }|' mcpp.toml > mcpp.toml.next
+          mv mcpp.toml.next mcpp.toml
+
+      # THE SURFACE, WITHOUT `--complete`. An absent name denotes an interface
+      # this implementation does not provide, which clause 3 permits; what the
+      # check still refuses is a name the specification does not list, which is
+      # the one freedom an implementation retains.
+      - name: The exported surface contains nothing the specification does not name
+        run: |
+          set -euo pipefail
+          rm -rf target && mcpp build --target wasm32-emscripten
+          objs=$(find target -path '*/obj/*' -name '*.o' ! -name '*.m.o' | tr '\n' ' ')
+          [ -n "$objs" ] || { echo "::error::no objects were built"; exit 1; }
+          bash .spec/tools/check-surface.sh .spec/SURFACE.txt $objs
+
+      # AND THE TWELVE GROUPS ARE COMPLETE, which the check above does not
+      # assert: without `--complete` it permits every absence, so a group
+      # missing one member would pass. The denominator is SURFACE.txt's own
+      # headings, so a name added to the specification is covered without
+      # editing this step.
+      - name: Every group this implementation claims is whole
+        run: |
+          set -euo pipefail
+          objs=$(find target -path '*/obj/*' -name '*.o' ! -name '*.m.o' | tr '\n' ' ')
+          "$NM" --defined-only $objs 2>/dev/null \
+            | awk '$2=="T"||$2=="W"||$2=="R"||$2=="D"||$2=="B"||$2=="S"{print $3}' \
+            | sed 's/^_//' | grep '^kal_' | sort -u > /tmp/exported.txt
+          awk '/^# openkal\./{g=substr($2,9); next} /^kal_/{print g" "$0}' \
+            .spec/SURFACE.txt > /tmp/grouped.txt
+          fail=0
+          for g in version abort stream memory env time random fs terminal net datagram timeout; do
+            missing=""
+            while read -r s; do
+              grep -qx "$s" /tmp/exported.txt || missing="$missing $s"
+            done < <(awk -v g="$g" '$1==g{print $2}' /tmp/grouped.txt)
+            if [ -n "$missing" ]; then
+              echo "::error::openkal.$g is claimed and incomplete:$missing"; fail=1
+            else
+              echo "  ok  openkal.$g is whole"
+            fi
+          done
+          # And the three this platform does not have export nothing at all.
+          for g in process exec space; do
+            present=""
+            while read -r s; do
+              grep -qx "$s" /tmp/exported.txt && present="$present $s"
+            done < <(awk -v g="$g" '$1==g{print $2}' /tmp/grouped.txt)
+            if [ -n "$present" ]; then
+              echo "::error::openkal.$g is not provided yet exports:$present"; fail=1
+            else
+              echo "  ok  openkal.$g exports nothing"
+            fi
+          done
+          test "$fail" -eq 0
+
+      # THE TASK GATE, IN BOTH DIRECTIONS.
+      #
+      # `openkal.task` needs `-pthread`, which selects a different C library
+      # build and a different memory model -- a property of the whole link. So
+      # the interface is carried by a feature: without it the translation unit
+      # is empty and the eight symbols do not exist, which is the same
+      # treatment the three absent interfaces get and for the same reason.
+      #
+      # Both directions are asserted, because a gate is only a gate if the
+      # other side of it differs. The conformance suite cannot yet be built
+      # with this switch -- it would have to reach the specification package's
+      # modules too, and mcpp has no whole-graph flag channel -- so what is
+      # asserted here is the gating, and the README records the rest.
+      - name: The task interface exists in a -pthread link and in no other
+        run: |
+          set -euo pipefail
+          rm -rf target
+          mcpp build --target wasm32-emscripten
+          objs=$(find target -path '*/obj/*' -name '*.o' ! -name '*.m.o' | tr '\n' ' ')
+          n=$("$NM" --defined-only $objs 2>/dev/null | grep -c 'kal_task' || true)
+          test "$n" -eq 0 || { echo "::error::$n kal_task symbols without the feature"; exit 1; }
+          echo "  ok  no task symbol without the feature"
+
+          rm -rf target
+          mcpp build --target wasm32-emscripten --features threads
+          objs=$(find target -path '*/obj/*' -name '*.o' ! -name '*.m.o' | tr '\n' ' ')
+          n=$("$NM" --defined-only $objs 2>/dev/null \
+              | awk '$2=="T"||$2=="W"{print $3}' | sed 's/^_//' \
+              | grep -c '^kal_task' || true)
+          test "$n" -eq 8 || { echo "::error::expected 8 kal_task symbols with the feature, found $n"; exit 1; }
+          echo "  ok  eight task symbols with the feature"
+
+      - name: Restore the manifest
+        if: always()
+        run: git checkout -- mcpp.toml

@@ -1,0 +1,114 @@
+# openkal-emscripten
+
+An implementation of [openkal](https://github.com/mcpplibs/openkal) for
+Emscripten, written **above** a C library rather than beneath one.
+
+Every other implementation in this ecosystem is written on a kernel's own
+interface: a register discipline, a trap instruction, and a table of numbers.
+Emscripten has no kernel to issue a call to. It has a C library over a
+JavaScript host, and clause 2 of the specification permits exactly this
+arrangement in as many words: "an implementation may be built upon a C library,
+beneath one, or without one." This is the first implementation here to take the
+first of the three.
+
+That direction makes the code thin and not easy. A forward and an error
+translation is most of each function; what an above-libc implementation has to
+get right is the places where the C library's vocabulary and openkal's do
+**not** correspond, and those are the places the sources comment individually.
+
+## What it provides
+
+Twelve of the fifteen interfaces, in whole:
+
+| interface | notes |
+|---|---|
+| `openkal.version` | the self-description every implementation exports |
+| `openkal.abort` | the message reaches the host through a descriptor, not stdio |
+| `openkal.stream` | the standard streams, borrowed |
+| `openkal.memory` | `aligned_alloc`; the granularity is the alignment honoured, not the wasm page |
+| `openkal.env` | variables from `environ`; arguments from the host, which is the one question the C library between them does not answer |
+| `openkal.time` | the monotonic granularity is measured rather than asked for, because a browser deliberately coarsens its clock |
+| `openkal.random` | `getentropy`, which is the host's cryptographic generator and not MEMFS's `/dev/urandom` |
+| `openkal.fs` | MEMFS, with one preopen at `/`; locks and capacity are withheld by the property word |
+| `openkal.terminal` | asked of the machine, so the same module answers correctly under node and in a browser |
+| `openkal.net` | the calls are real and the transport is a WebSocket proxy; `kal_net_props` claims nothing |
+| `openkal.datagram` | the same |
+| `openkal.timeout` | `poll` and then the operation; the granularity is `poll`'s millisecond, not the clock's |
+
+## What it does not provide, and why the absence is the report
+
+`openkal.process`, `openkal.exec` and `openkal.space` are **not** provided.
+There is no fork and no exec on this platform; there is no way to publish bytes
+as executable code, because a wasm module is instantiated by the host from
+bytes it validates; and a module has one linear memory and cannot obtain a
+second.
+
+A program that uses one of those seventeen names fails at **link**, naming the
+symbol. That is clause 6.2's second time, and it is the mechanism rather than a
+defect: providing `kal_process_spawn` so that it returned an error would be the
+shape the specification forbids -- present and always failing, which the caller
+cannot tell from a condition -- and it would move a fact known at link time to
+run time.
+
+## `openkal.task` and the whole-graph `-pthread`
+
+Threads are a **link-time** decision on this platform. Emscripten compiles
+`pthread_create` either way; whether it can create anything depends on
+`-pthread`, which selects a different C library build, a different memory model
+(a `SharedArrayBuffer`) and a different loader contract.
+
+So the interface is carried by a feature:
+
+```toml
+[dependencies]
+openkal-emscripten = { version = "0.1.0", features = ["threads"] }
+```
+
+Without it, `src/threads/task.cpp` compiles to nothing, the eight `kal_task_*`
+symbols do not exist, and `kal_interfaces()` does not claim the interface --
+the same treatment the three absent interfaces get, for the same reason.
+
+**This feature is not yet usable end to end, and the limitation is the build
+tool's rather than this package's.** `-pthread` changes the module
+configuration of *every* translation unit in the link, including the
+specification package's, and mcpp has no channel for a flag that applies to a
+whole dependency graph: a feature contributes sources, defines and per-glob
+compile flags, and `[build] ldflags` reaches the root package only. Measured
+2026-09-11 with the feature active and `-pthread` on the consumer:
+
+```
+error: POSIX thread support was disabled in precompiled file
+       '.../pcm.cache/openkal.types.pcm' but is currently enabled
+```
+
+which is the specification package's module, compiled without the switch. The
+interface word is already correct for a link that manages it; closing the gap
+is an engine change of the same shape as the existing whole-graph runtime
+flags, and it is recorded rather than worked around.
+
+## Conformance
+
+Measured 2026-09-11, `emsdk 6.0.9`, run under node:
+
+```
+$ OPENKAL_CONFORMANCE_RUNNER=<node> \
+  bash openkal/tools/run-conformance.sh openkal-emscripten . \
+       core,env,time,random,fs,terminal,timeout --target wasm32-emscripten
+
+observations: 86 held, 0 did not hold, 13 not observed
+the implementation conforms in every observation made
+```
+
+The thirteen unobserved are the interfaces this implementation does not provide
+(`process`, `exec`, `space`, and the three `abort` observations that need a
+started copy of the suite to make), plus the four capability words it withholds
+(`fs` locks and capacity, `task` timeout and thread-local storage), plus the
+two environment observations that need the runner to set a variable.
+
+The exported surface is checked against the specification's own `SURFACE.txt`:
+86 names, twelve complete groups, three absent groups, and nothing beginning
+with `kal_` that the specification does not name.
+
+## Licence
+
+Apache-2.0.

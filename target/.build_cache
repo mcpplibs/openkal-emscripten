@@ -1,0 +1,17 @@
+[target=wasm32-emscripten]
+/home/speak/workspace/github/mcpplibs/openkal-emscripten/target/wasm32-emscripten/302e40faebcba915
+/home/speak/.mcpp/registry/data/xpkgs/xim-x-ninja/1.12.1/ninja
+302e40faebcba915
+LD_LIBRARY_PATH
+/home/speak/.mcpp/registry/data/xpkgs/xim-x-gcc-runtime/15.1.0/lib64
+runTargets=0
+runEnv=
+
+subos=/home/speak/.mcpp/registry/subos/default
+runtimeBinding={"arch":"x86_64","capabilities":[],"contract_hash":"34a0c0af5c2944a6","declared":true,"environment":[{"op":"prepend","value":"${subosdir}/share","var":"XDG_DATA_DIRS"},{"op":"prepend","value":"${subosdir}/usr/lib/dri","var":"LIBGL_DRIVERS_PATH"},{"op":"prepend","value":"${subosdir}/share/glvnd/egl_vendor.d","var":"__EGL_VENDOR_LIBRARY_DIRS"},{"op":"prepend","value":"${subosdir}/share","var":"XDG_DATA_DIRS"},{"op":"prepend","value":"${subosdir}/usr/lib/gbm","var":"GBM_BACKENDS_PATH"},{"op":"prepend","value":"${subosdir}/share/glvnd/egl_vendor.d","var":"__EGL_VENDOR_LIBRARY_DIRS"},{"op":"prepend","value":"${subosdir}/share","var":"XDG_DATA_DIRS"}],"host_libc":"2.39","libc":"glibc@2.44","library_dirs":["/home/speak/.mcpp/registry/data/xpkgs/xim-x-glibc/2.44/lib"],"loader":"/home/speak/.mcpp/registry/data/xpkgs/xim-x-glibc/2.44/lib/ld-linux-x86-64.so.2","note":"","platform":"linux","provenance":"mcpp_default","provider_bindings":["mesa-lavapipe@26.2.1","mesa@25.0.7.2","nvidia-gl-host-link@0.1.2"],"provider_id":"xlings","runtime_artifacts":[],"runtime_id":"glibc@2.44","runtime_providers":[],"schema":1,"search_dirs":["/home/speak/.mcpp/registry/subos/default/lib"],"selection":{"mode":"mcpp_default","name":"default","owner_root":"/home/speak/workspace/github/mcpplibs/openkal-emscripten","source":"default_policy"},"subos_dir":"/home/speak/.mcpp/registry/subos/default"}
+profile=dev
+cacheMode=global
+depSourceRoots=0
+runner=0
+runtier=0
+features=threads
