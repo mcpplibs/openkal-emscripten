@@ -96,8 +96,29 @@ jobs:
           # from whatever the index has; the block below replaces it.
           if [ -n "${MCPP_SOURCE_REF:-}" ]; then
             xlings install mcpp -y -g
-          else
-            xlings install "mcpp@$MCPP_VERSION" -y -g
+          elif ! xlings install "mcpp@$MCPP_VERSION" -y -g; then
+            # AND THE PIN'S ABSENCE IS EXPLAINED HERE RATHER THAN LEFT AS
+            # xlings' GENERIC MESSAGE.
+            #
+            # `MCPP_VERSION` records the engine this repository is TESTED
+            # AGAINST, and a run can legitimately precede that release: this
+            # package needed two engine changes of its own, so its first CI
+            # named a version that did not exist yet.
+            #
+            # THE FALLBACK IS DELIBERATELY NOT "USE WHATEVER IS THERE". An
+            # older engine cannot compile the conformance suite's one C
+            # translation unit at all -- `em++`'s C compiler was derived as
+            # `em`, which is not a program -- so a run that quietly used one
+            # would be a false green about this package rather than a red
+            # about the ordering.
+            echo "::error::mcpp@$MCPP_VERSION is not in the index yet."
+            echo "::error::  That version is what this repository is tested"
+            echo "::error::  against, and it may still be in release. Until it"
+            echo "::error::  is published, set the repository variable"
+            echo "::error::  MCPP_SOURCE_REF to the mcpp branch under review"
+            echo "::error::  (or dispatch this workflow with mcpp_ref), which"
+            echo "::error::  builds that engine here instead of installing it."
+            exit 1
           fi
           mcpp --version
           mcpp self config --mirror GLOBAL
