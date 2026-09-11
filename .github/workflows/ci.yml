@@ -40,7 +40,7 @@ env:
   # `em++`'s C compiler is `emcc` and not `em` (a C translation unit in the
   # conformance suite does not compile without that), and the wasm target rows
   # resolve the emsdk payload.
-  MCPP_VERSION: 2026.9.11.4
+  MCPP_VERSION: 2026.9.12.2
   XLINGS_VERSION: v2026.8.17.2
   XLINGS_NON_INTERACTIVE: '1'
 
