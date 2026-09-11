@@ -1,9 +1,0 @@
-{
-  "dlopen_surface": {
-    "findings": [],
-    "members": 0,
-    "reason": "this build produces no program; the surface is reached from a process and belongs to whatever runs",
-    "walked": 0
-  },
-  "post_link_key": "62474f8eecf0cf26"
-}
