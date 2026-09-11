@@ -109,6 +109,28 @@ The exported surface is checked against the specification's own `SURFACE.txt`:
 86 names, twelve complete groups, three absent groups, and nothing beginning
 with `kal_` that the specification does not name.
 
+## Building it, and what it needs
+
+```bash
+mcpp build --target wasm32-emscripten
+```
+
+Nothing has to be declared. The `wasm32-emscripten` row names its own payload
+(`emsdk@6.0.9`), the payload brings its own sysroot and its own libc++ module
+surface, and `mcpp run --target wasm32-emscripten` executes the module with
+`node`.
+
+A consumer selects this implementation by platform and names no
+implementation in its source:
+
+```toml
+[dependencies]
+openkal = "0.12.0"
+
+[target.'cfg(os = "emscripten")'.dependencies]
+openkal-emscripten = "0.1.0"
+```
+
 ## Licence
 
 Apache-2.0.
