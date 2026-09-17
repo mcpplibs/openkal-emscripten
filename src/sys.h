@@ -71,6 +71,7 @@ inline int translate(int e) {
     case ENOTEMPTY:    return kal_err_not_empty;
     case EISDIR:       return kal_err_is_directory;
     case ENOTDIR:      return kal_err_not_directory;
+    case ENOEXEC:      return kal_err_not_program;
     default:           return kal_err_io;
     }
 }
