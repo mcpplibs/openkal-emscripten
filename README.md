@@ -61,7 +61,7 @@ So the interface is carried by a feature:
 
 ```toml
 [dependencies]
-openkal-emscripten = { version = "0.1.1", features = ["threads"] }
+openkal-emscripten = { version = "0.2.0", features = ["threads"] }
 ```
 
 Without it, `src/threads/task.cpp` compiles to nothing, the eight `kal_task_*`
@@ -143,10 +143,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.12.0"
+openkal = "0.13.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.1.1"
+openkal-emscripten = "0.2.0"
 ```
 
 ## Licence

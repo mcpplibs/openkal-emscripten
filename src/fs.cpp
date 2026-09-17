@@ -117,6 +117,13 @@ void fill(const struct stat& st, kal_u32 wanted, kal_node_info* out) {
         out->identity[1] = static_cast<kal_u64>(st.st_ino);
         out->present |= KAL_INFO_IDENTITY;
     }
+    // Version 0.13. MEMFS keeps the mode a node was given, so whether a node
+    // may be started is recorded, and it is reported for a file only.
+    if ((wanted & KAL_INFO_EXECUTABLE) && S_ISREG(st.st_mode)
+        && room_for<int>(out, offsetof(kal_node_info, executable))) {
+        out->executable = (st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) != 0 ? 1 : 0;
+        out->present |= KAL_INFO_EXECUTABLE;
+    }
 }
 
 // The iteration word openkal hands back and forth is a pointer to the C
@@ -154,6 +161,7 @@ int kal_fs_preopen(kal_uintptr index, kal_dir* out,
 //   MODIFIED_TIME    a modification time is kept.
 //   ATOMIC_RENAME    `rename` is a single operation on an in-memory tree.
 //   MAKE_LINKS       `symlink` is implemented.
+//   EXECUTABLE       the mode a node was given is kept, and `chmod` changes it.
 //
 // WITHHELD: LOCKS, because MEMFS has no lock table and a wasm module has no
 // second process to contend with -- so a lock that always succeeded would tell
@@ -163,7 +171,7 @@ int kal_fs_preopen(kal_uintptr index, kal_dir* out,
 kal_uintptr kal_fs_props(kal_dir) {
     return KAL_FS_PROP_CASE_SENSITIVE | KAL_FS_PROP_LINKS
          | KAL_FS_PROP_MODIFIED_TIME  | KAL_FS_PROP_ATOMIC_RENAME
-         | KAL_FS_PROP_MAKE_LINKS;
+         | KAL_FS_PROP_MAKE_LINKS | KAL_FS_PROP_EXECUTABLE;
 }
 
 int kal_fs_open_dir(kal_dir base, const char* name, kal_uintptr len,
@@ -367,6 +375,27 @@ int kal_fs_set_modified_at(kal_dir base, const char* name, kal_uintptr len,
     ts[1].tv_sec  = static_cast<time_t>(modified_ns / kNsPerSecond);
     ts[1].tv_nsec = static_cast<long>(modified_ns % kNsPerSecond);
     if (::utimensat(b, n, ts, 0) != 0) return oke::last();
+    return kal_ok;
+}
+
+// Whether a node may be started, version 0.13. The mode keeps three bits for
+// one property: a class that may read the node may start it, and clearing
+// clears all three.
+int kal_fs_set_executable_at(kal_dir base, const char* name, kal_uintptr len,
+                             int executable) {
+    const int b = oke::unpack(base.h);
+    if (b < 0) return kal_err_invalid;
+    char n[kMaxName + 1];
+    if (!cname(name, len, n)) return kal_err_invalid;
+    struct stat st{};
+    if (::fstatat(b, n, &st, 0) != 0) return oke::last();
+    if (S_ISDIR(st.st_mode)) return kal_err_is_directory;
+    if (!S_ISREG(st.st_mode)) return kal_err_invalid;
+    const mode_t mode = st.st_mode & 07777;
+    const mode_t next = executable != 0 ? (mode | ((mode & 0444) >> 2))
+                                        : (mode & ~static_cast<mode_t>(0111));
+    if (next == mode) return kal_ok;
+    if (::fchmodat(b, n, next, 0) != 0) return oke::last();
     return kal_ok;
 }
 
