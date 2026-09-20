@@ -29,6 +29,15 @@ int kal_terminal_get_mode(kal_stream s, kal_uintptr* mode) {
     kal_uintptr m = 0;
     if ((t.c_lflag & ICANON) != 0) m |= KAL_TERM_LINE_EDIT;
     if ((t.c_lflag & ECHO)   != 0) m |= KAL_TERM_ECHO;
+    // KAL_TERM_PASS_CONTROL IS READ FROM THREE FLAGS AND NOT FROM ISIG. The
+    // position states that the environment reserves NO keystroke, so it is set
+    // only where every mechanism by which this environment reserves one is off:
+    // ISIG for the interrupt and its neighbours, IXON for the pair that stops
+    // and starts output, IEXTEN for the one that takes the next keystroke
+    // literally. Under node these are the host's own; in a browser there is no
+    // terminal and the property word says so before any of this is reached.
+    if ((t.c_lflag & (ISIG | IEXTEN)) == 0 &&
+        (t.c_iflag & IXON) == 0)   m |= KAL_TERM_PASS_CONTROL;
     *mode = m;
     return kal_ok;
 }
@@ -37,12 +46,37 @@ int kal_terminal_set_mode(kal_stream s, kal_uintptr mode) {
     struct termios t{};
     const int fd = static_cast<int>(s.h);
     if (::tcgetattr(fd, &t) != 0) return oke::last();
-    // READ, MODIFY, WRITE, AND ONLY THE TWO BITS openkal NAMES. A mode
+    const bool reserved_none = (t.c_lflag & (ISIG | IEXTEN)) == 0 &&
+                               (t.c_iflag & IXON) == 0;
+    // READ, MODIFY, WRITE, AND ONLY THE POSITIONS openkal NAMES. A mode
     // composed from scratch would silently reset every other attribute of the
-    // terminal -- flow control, the special characters, the baud rate -- none
-    // of which this interface claims to own.
+    // terminal -- the special characters, the baud rate -- none of which this
+    // interface claims to own.
     if (mode & KAL_TERM_LINE_EDIT) t.c_lflag |=  ICANON; else t.c_lflag &= ~ICANON;
     if (mode & KAL_TERM_ECHO)      t.c_lflag |=  ECHO;   else t.c_lflag &= ~ECHO;
+
+    // A POSITION WHOSE REQUESTED VALUE IS THE ONE IN EFFECT IS NOT WRITTEN.
+    // This one stands for three flags, so establishing it again would settle
+    // two mechanisms the caller never asked about.
+    if (((mode & KAL_TERM_PASS_CONTROL) != 0) != reserved_none) {
+        if (mode & KAL_TERM_PASS_CONTROL) {
+            t.c_lflag &= ~(ISIG | IEXTEN);
+            t.c_iflag &= ~IXON;
+        } else {
+            t.c_lflag |=  (ISIG | IEXTEN);
+            t.c_iflag |=   IXON;
+        }
+    }
+
+    // AND A MODE IS NOT A WAY TO END THE INPUT. With line assembly off, how
+    // long a read waits is decided by VMIN and VTIME, and a terminal left at
+    // VMIN=0 makes `kal_stream_read' report zero --- which clause 7.4 says
+    // denotes the end of the input. A caller that wants a read which gives up
+    // asks `kal_timeout_read' for one.
+    if ((mode & KAL_TERM_LINE_EDIT) == 0) {
+        t.c_cc[VMIN]  = 1;
+        t.c_cc[VTIME] = 0;
+    }
     // TCSANOW and not TCSADRAIN: openkal's caller has just been told what the
     // mode is and is entitled to have it take effect before its next read.
     if (::tcsetattr(fd, TCSANOW, &t) != 0) return oke::last();
