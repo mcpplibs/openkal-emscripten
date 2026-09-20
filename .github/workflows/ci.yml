@@ -40,7 +40,7 @@ env:
   # `em++`'s C compiler is `emcc` and not `em` (a C translation unit in the
   # conformance suite does not compile without that), and the wasm target rows
   # resolve the emsdk payload.
-  MCPP_VERSION: 2026.9.12.2
+  MCPP_VERSION: 2026.9.18.3
   XLINGS_VERSION: v2026.8.17.2
   XLINGS_NON_INTERACTIVE: '1'
 
@@ -189,24 +189,32 @@ jobs:
           work="$RUNNER_TEMP/absent"
           rm -rf "$work"; mkdir -p "$work/src"
           impl="$(pwd)"
-          # BOTH DEPENDENCIES NAMED THE SAME WAY, and this step therefore runs
-          # BEFORE the manifest is pointed at the specification's working tree.
-          # mcpp refuses a graph in which one package reaches `openkal` by path
-          # and another by version -- measured:
+          # BOTH DEPENDENCIES NAMED THE SAME WAY. mcpp refuses a graph in
+          # which one package reaches `openkal` by path and another by version
+          # -- measured:
           #
           #   error: dependency 'mcpplibs.openkal' is requested as both a path
           #          dep (by 'absent') and a version dep (by
           #          'mcpplibs.openkal-emscripten@path'). Pick one.
           #
-          # so the consumer uses the version this implementation's committed
-          # manifest names, which is the arrangement an ordinary consumer has.
+          # AND BOTH NAME THE WORKING TREE RATHER THAN A PUBLISHED VERSION.
+          # They named the version this implementation's manifest asks for,
+          # which is the arrangement an ordinary consumer has --- and which
+          # made this step unrunnable during the release it is part of: a
+          # branch that raises the version asks the index for one that is not
+          # registered yet, and the step then reports "the build did not fail
+          # naming kal_process_spawn" for a build that never started. What this
+          # step asserts is a property of the two trees, so it takes the trees.
+          sed 's|^openkal = .*$|openkal = { path = "'"$impl"'/.spec" }|' \
+              "$impl/mcpp.toml" > "$impl/mcpp.toml.next"
+          mv "$impl/mcpp.toml.next" "$impl/mcpp.toml"
           cat > "$work/mcpp.toml" << TOML
           [package]
           name = "absent"
           version = "0.1.0"
 
           [dependencies]
-          openkal = "$(grep -oP '^openkal = "\K[0-9.]+' "$impl/mcpp.toml")"
+          openkal = { path = "$impl/.spec" }
           openkal-emscripten = { path = "$impl" }
           TOML
           cat > "$work/src/main.cpp" << 'CPP'
