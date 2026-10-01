@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-emscripten"
-version     = "0.3.0"
+version     = "0.3.1"
 description = "An implementation of openkal for Emscripten, written ABOVE a C library rather than beneath one, because on this platform there is no kernel to issue calls to."
 license     = "Apache-2.0"
 
@@ -18,7 +18,7 @@ authors     = ["mcpplibs"]
 repo        = "https://github.com/mcpplibs/openkal-emscripten"
 
 [dependencies]
-openkal = "0.14.0"
+openkal = "0.14.1"
 
 [build]
 # THE DIALECT FLAGS ARE THE SAME AS EVERY OTHER IMPLEMENTATION'S AND THE REASON
