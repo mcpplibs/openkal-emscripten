@@ -12,7 +12,7 @@ name: CI
 #                 does not have fails at LINK naming the symbol, which is
 #                 clause 6.2's second time and is the mechanism rather than a
 #                 defect
-#   task gating   the eight kal_task_* symbols exist in a `-pthread` link and
+#   task gating   the nine kal_task_* symbols exist in a `-pthread` link and
 #                 in no other, and the interfaces word follows the link
 #
 # ONE TOOLCHAIN, NOT TWO, AND THAT IS A PROPERTY OF THE TARGET RATHER THAN A
@@ -308,8 +308,9 @@ jobs:
       #   1. without the feature and the switch, no task symbol exists;
       #   2. the feature without the switch is refused before anything compiles,
       #      naming the feature;
-      #   3. with both, the eight symbols exist and a program that starts a task
-      #      and joins it exits 0 under node.
+      #   3. with both, the nine symbols exist and a program that starts a task,
+      #      joins it, and asks each context for its own stack, exits 0 under
+      #      node.
       #
       # The consumer names `openkal` by path, as the implementation's manifest
       # now does (the step above): mcpp refuses one package reached both by path
@@ -329,16 +330,42 @@ jobs:
           rm -rf "$work"; mkdir -p "$work/src"
           cat > "$work/src/main.cpp" << 'CPP'
           import openkal.task;
-          static void entry(void* arg) { *static_cast<int*>(arg) = 1; }
+          import openkal.types;
+
+          // THE REGION EACH CONTEXT STANDS ON, ASKED FROM INSIDE IT. Containment
+          // is the observation rather than the shape of the numbers: a range
+          // that does not contain a local of the asking context describes
+          // something other than that context.
+          static bool holds(kal_uintptr at, int e, void* base, kal_uintptr size) {
+            const kal_uintptr b = reinterpret_cast<kal_uintptr>(base);
+            return e == 0 && size != 0 && b + size > b && at >= b && at - b < size;
+          }
+
+          static int inside = 0;
+          static void entry(void* arg) {
+            *static_cast<int*>(arg) = 1;
+            char here = 0;
+            void* base = nullptr;
+            kal_uintptr size = 0;
+            inside = holds(reinterpret_cast<kal_uintptr>(&here),
+                           kal_task_stack(&base, &size), base, size) ? 1 : 0;
+          }
+
           int main() {
             // KAL_TASK_PROP_PARALLEL is bit 1 (openkal/task.h); a macro does not
             // cross a module.
             if ((kal_task_props() & 2u) == 0) return 2;
+            char here = 0;
+            void* base = nullptr;
+            kal_uintptr size = 0;
+            if (!holds(reinterpret_cast<kal_uintptr>(&here),
+                       kal_task_stack(&base, &size), base, size)) return 6;
             int ran = 0;
             kal_task t{};
             if (kal_task_start(&entry, &ran, &t) != 0) return 3;
             if (kal_task_join(t) != 0) return 4;
-            return ran == 1 ? 0 : 5;
+            if (ran != 1) return 5;
+            return inside == 1 ? 0 : 7;
           }
           CPP
           manifest() {
@@ -368,11 +395,11 @@ jobs:
           n=$("$NM" --defined-only $objs 2>/dev/null \
               | awk '$2=="T"||$2=="W"{print $3}' | sed 's/^_//' \
               | grep -c '^kal_task' || true)
-          test "$n" -eq 8 || { echo "::error::expected 8 kal_task symbols with the switch, found $n"; exit 1; }
-          echo "  ok  eight task symbols with the switch"
+          test "$n" -eq 9 || { echo "::error::expected 9 kal_task symbols with the switch, found $n"; exit 1; }
+          echo "  ok  nine task symbols with the switch"
           ( cd "$work" && timeout 300 mcpp run --target wasm32-emscripten ) \
             || { echo "::error::the task program did not exit 0 under node"; exit 1; }
-          echo "  ok  a task starts, runs and joins under node"
+          echo "  ok  a task starts, runs and joins under node, and both contexts are told their own stack"
 
       - name: Restore the manifest
         if: always()

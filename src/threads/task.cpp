@@ -15,6 +15,10 @@
 // package-invented `OKE_THREADS` would have: a manifest that set the define
 // and not the flag, or the reverse, and a capability word that then lied.
 #include <emscripten/threading.h>
+// The stack introspection this platform publishes, which is per thread: the
+// pthread runtime calls `emscripten_stack_set_limits` for each context it
+// starts, so the answer below is the asking context's own.
+#include <emscripten/stack.h>
 
 // THREADS ARE A LINK-TIME DECISION ON THIS PLATFORM, WHICH NO OTHER
 // IMPLEMENTATION HAS TO SAY.
@@ -53,7 +57,7 @@ extern "C" {
 //   DID NOT HOLD  contexts that ran at the same time have identities distinct
 //
 // The suite is right. So without the switch this translation unit is empty,
-// the eight `kal_task_*` symbols do not exist, a program that uses one fails
+// the nine `kal_task_*` symbols do not exist, a program that uses one fails
 // at LINK naming it, and `kal_interfaces()` -- keyed on the same
 // `__EMSCRIPTEN_PTHREADS__` -- does not claim the interface. That is clause
 // 6.2's second time, and it is the treatment `openkal.process`,
@@ -122,6 +126,28 @@ void kal_task_yield(void) { ::sched_yield(); }
 // constant is a correct identity when there is one context.
 kal_uintptr kal_task_current(void) {
     return reinterpret_cast<kal_uintptr>(::pthread_self());
+}
+
+// The stack the calling context runs on. Version 0.15.
+//
+// THE PLATFORM PUBLISHES IT, PER CONTEXT, AND THE STACK GROWS DOWN. The base is
+// where the stack pointer stands when nothing is in use --- the HIGH address ---
+// and the end is where it stops being the stack, so the usable region is
+// [end, base) and that is what this answers. Both are the asking context's:
+// the runtime that starts a pthread sets that thread's pair before its entry
+// runs, which is why no record is kept here and nothing is measured.
+//
+// The end is the end of the stack and not of the memory: a region below it is
+// the guard Emscripten places for a thread that overflowed, and a caller that
+// treats it as usable would be writing past what this context has.
+int kal_task_stack(void** base, kal_uintptr* size) {
+    if (base == nullptr || size == nullptr) return kal_err_invalid;
+    const uintptr_t low  = ::emscripten_stack_get_end();
+    const uintptr_t high = ::emscripten_stack_get_base();
+    if (high <= low) return kal_err_io;
+    *base = reinterpret_cast<void*>(low);
+    *size = static_cast<kal_uintptr>(high - low);
+    return kal_ok;
 }
 
 // SUSPENSION ON A WORD, AND ON THIS PLATFORM IT IS THE MACHINE'S OWN
