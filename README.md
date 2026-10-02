@@ -61,10 +61,10 @@ So the interface is carried by a feature:
 
 ```toml
 [dependencies]
-openkal-emscripten = { version = "0.3.1", features = ["threads"] }
+openkal-emscripten = { version = "0.4.0", features = ["threads"] }
 ```
 
-Without it, `src/threads/task.cpp` compiles to nothing, the eight `kal_task_*`
+Without it, `src/threads/task.cpp` compiles to nothing, the nine `kal_task_*`
 symbols do not exist, and `kal_interfaces()` does not claim the interface --
 the same treatment the three absent interfaces get, for the same reason.
 
@@ -103,6 +103,24 @@ That channel does not reach the specification package's module. A graph-wide
 channel did exist (`[build] dialect_cxxflags`); what was missing was a way to
 scope it to one target and to let this feature state its requirement, which the
 typed table provides.
+
+## The region a context stands on
+
+`kal_task_stack` reports the stack of the calling context, and this platform
+publishes it per context: the runtime that starts a thread calls
+`emscripten_stack_set_limits` for it before its entry runs, so
+`emscripten_stack_get_base` and `emscripten_stack_get_end` answer about the
+context that asks, and no record is kept here.
+
+The stack grows down, so the end is the low address and the base the high one,
+and the region is the pair. The end is the end of the *stack* and not of the
+memory: below it is the guard Emscripten places for a thread that overflowed,
+which is why the answer begins at the end rather than at the bottom of what the
+thread was given.
+
+The continuous integration gate that already builds a task program under
+`-pthread` also asks each of its two contexts for its own region and asserts
+that the region contains a local of that context.
 
 ## Conformance
 
@@ -143,10 +161,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.14.1"
+openkal = "0.15.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.3.1"
+openkal-emscripten = "0.4.0"
 ```
 
 ## Licence
