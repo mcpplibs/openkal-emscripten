@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sched.h>
 #include <unistd.h>
 
 // THE FILE SYSTEM IS THE INTERFACE WHERE THIS PLATFORM'S VOCABULARY AND
@@ -132,7 +133,76 @@ void fill(const struct stat& st, kal_u32 wanted, kal_node_info* out) {
 // `closedir` that ends the walk -- and it is NOT put through handle.h, because
 // a DIR* is not a descriptor and packing it would be a second discipline on a
 // word this file already owns.
-DIR* as_dir(kal_uintptr iter) { return reinterpret_cast<DIR*>(iter); }
+// AN ITERATOR IS A LISTING, AND THE LISTINGS NOT YET READ TO THE END ARE KEPT
+// WITH THEIR DIRECTORY, BECAUSE CLOSING THE DIRECTORY MUST END THEM. fs.h
+// releases an iterator "by reading past the end or by closing the directory
+// that produced it", and the walk holds a duplicate of the directory's
+// descriptor, so closing the directory's descriptor does not reach it.
+// Measured on the Linux implementation, which had the same shape
+// (mcpplibs/openkal-linux#34): a C library above that stopped reading a
+// directory early kept a descriptor for every directory it closed.
+//
+// The lock spins rather than suspends because the build without threads has
+// nothing to suspend upon, and the build with them needs nothing more.
+struct listing {
+    DIR*     dir;
+    int      of;       // the descriptor of the directory it was begun upon
+    listing* next;
+    int      busy;     // a context is inside kal_fs_list_next with it
+    int      doomed;   // its directory was closed while it was busy
+};
+
+listing*     g_listings = nullptr;
+volatile int g_listings_held = 0;
+
+void listings_lock() {
+    while (__atomic_exchange_n(&g_listings_held, 1, __ATOMIC_ACQUIRE)) ::sched_yield();
+}
+void listings_unlock() { __atomic_store_n(&g_listings_held, 0, __ATOMIC_RELEASE); }
+
+void listing_release(listing* s) { ::closedir(s->dir); ::free(s); }
+
+// Ends every listing begun upon `of'. A listing another context is reading is
+// marked rather than released, and that context releases it on its way out
+// (clause 6.6).
+void listings_end(int of) {
+    listing* done = nullptr;
+    listings_lock();
+    for (listing** p = &g_listings; *p != nullptr;) {
+        listing* s = *p;
+        if (s->of != of || s->doomed) { p = &s->next; continue; }
+        if (s->busy) { s->doomed = 1; p = &s->next; continue; }
+        *p = s->next; s->next = done; done = s;
+    }
+    listings_unlock();
+    while (done != nullptr) { listing* s = done; done = s->next; listing_release(s); }
+}
+
+// Takes `s' for the calling context, or reports that it is not an open listing
+// of `of'. The word is found among the open listings rather than read through.
+bool listing_take(listing* s, int of) {
+    for (;;) {
+        listings_lock();
+        listing* p = g_listings;
+        while (p != nullptr && p != s) p = p->next;
+        if (p == nullptr || p->of != of || p->doomed) { listings_unlock(); return false; }
+        if (!p->busy) { p->busy = 1; listings_unlock(); return true; }
+        listings_unlock();
+        ::sched_yield();
+    }
+}
+
+void listing_give(listing* s, bool ended) {
+    listings_lock();
+    s->busy = 0;
+    const bool release = ended || s->doomed;
+    if (release) {
+        for (listing** p = &g_listings; *p != nullptr; p = &(*p)->next)
+            if (*p == s) { *p = s->next; break; }
+    }
+    listings_unlock();
+    if (release) listing_release(s);
+}
 
 }  // namespace
 
@@ -221,7 +291,11 @@ int kal_fs_open(kal_dir base, const char* name, kal_uintptr len,
 
 void kal_fs_close_dir(kal_dir d) {
     const int fd = oke::unpack(d.h);
-    if (fd >= 0) { ::close(fd); oke::retire(d.h); }
+    if (fd < 0) return;
+    // Before the close, because after it the number may already name another
+    // directory whose enumerations are not this one's.
+    listings_end(fd);
+    ::close(fd); oke::retire(d.h);
 }
 
 void kal_fs_close_file(kal_file f) {
@@ -470,25 +544,34 @@ int kal_fs_list_begin(kal_dir d, kal_uintptr* iter) {
     if (::lseek(copy, 0, SEEK_SET) < 0) { /* a directory may refuse; harmless */ }
     DIR* dir = ::fdopendir(copy);
     if (dir == nullptr) { const int e = oke::last(); ::close(copy); return e; }
-    *iter = reinterpret_cast<kal_uintptr>(dir);
+    auto* s = static_cast<listing*>(::malloc(sizeof(listing)));
+    if (s == nullptr) { ::closedir(dir); return kal_err_no_memory; }
+    s->dir = dir; s->of = fd; s->busy = 0; s->doomed = 0;
+    listings_lock(); s->next = g_listings; g_listings = s; listings_unlock();
+    *iter = reinterpret_cast<kal_uintptr>(s);
     return kal_ok;
 }
 
-int kal_fs_list_next(kal_dir, kal_uintptr* iter,
+int kal_fs_list_next(kal_dir d, kal_uintptr* iter,
                      char* name_out, kal_uintptr name_cap,
                      kal_uintptr* name_len, int* kind) {
-    if (iter == nullptr || *iter == 0) return kal_err_invalid;
-    DIR* dir = as_dir(*iter);
+    // A closed directory is a released handle (clause 6.7), and closing it
+    // released the iterator too, which fs.h states.
+    const int of = oke::unpack(d.h);
+    if (of < 0 || iter == nullptr || *iter == 0) return kal_err_invalid;
+    auto* s = reinterpret_cast<listing*>(*iter);
+    if (!listing_take(s, of)) return kal_err_invalid;
+    DIR* dir = s->dir;
     for (;;) {
         errno = 0;
         struct dirent* e = ::readdir(dir);
         if (e == nullptr) {
-            if (errno != 0) return oke::last();
+            if (errno != 0) { const int err = oke::last(); listing_give(s, false); return err; }
             // THE END OF THE WALK RELEASES THE ITERATOR AND SAYS SO ONCE. A
             // caller that called again would otherwise pass a closed DIR* to
             // `readdir`; zeroing the word makes the second call
             // kal_err_invalid rather than undefined.
-            ::closedir(dir);
+            listing_give(s, true);
             *iter = 0;
             return kal_err_not_found;
         }
@@ -524,6 +607,7 @@ int kal_fs_list_next(kal_dir, kal_uintptr* iter,
             default:      *kind = kal_node_other;     break;
             }
         }
+        listing_give(s, false);
         return kal_ok;
     }
 }
