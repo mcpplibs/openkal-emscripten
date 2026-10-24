@@ -22,6 +22,8 @@
 // program that prints a password.
 extern "C" {
 
+constexpr tcflag_t kAlters = ISTRIP | INLCR | IGNCR | ICRNL;
+
 int kal_terminal_get_mode(kal_stream s, kal_uintptr* mode) {
     if (mode == nullptr) return kal_err_invalid;
     struct termios t{};
@@ -38,6 +40,12 @@ int kal_terminal_get_mode(kal_stream s, kal_uintptr* mode) {
     // terminal and the property word says so before any of this is reached.
     if ((t.c_lflag & (ISIG | IEXTEN)) == 0 &&
         (t.c_iflag & IXON) == 0)   m |= KAL_TERM_PASS_CONTROL;
+    // KAL_TERM_PASS_INPUT IS READ FROM FOUR FLAGS, for the same reason: it
+    // states that nothing typed is altered, which holds only where every
+    // mechanism that alters input --- the high bit cleared, a line feed or a
+    // carriage return rewritten into the other, a carriage return discarded ---
+    // is off. Under node these are the host's own.
+    if ((t.c_iflag & kAlters) == 0) m |= KAL_TERM_PASS_INPUT;
     *mode = m;
     return kal_ok;
 }
@@ -48,6 +56,7 @@ int kal_terminal_set_mode(kal_stream s, kal_uintptr mode) {
     if (::tcgetattr(fd, &t) != 0) return oke::last();
     const bool reserved_none = (t.c_lflag & (ISIG | IEXTEN)) == 0 &&
                                (t.c_iflag & IXON) == 0;
+    const bool altered_none  = (t.c_iflag & kAlters) == 0;
     // READ, MODIFY, WRITE, AND ONLY THE POSITIONS openkal NAMES. A mode
     // composed from scratch would silently reset every other attribute of the
     // terminal -- the special characters, the baud rate -- none of which this
@@ -68,6 +77,13 @@ int kal_terminal_set_mode(kal_stream s, kal_uintptr mode) {
         }
     }
 
+    // The same rule for the position that stands for four flags. Clearing it
+    // restores the rewriting of a carriage return alone, which is what a
+    // terminal ordinarily applies.
+    if (((mode & KAL_TERM_PASS_INPUT) != 0) != altered_none) {
+        if (mode & KAL_TERM_PASS_INPUT) t.c_iflag &= ~kAlters;
+        else                            t.c_iflag |=  ICRNL;
+    }
     // AND A MODE IS NOT A WAY TO END THE INPUT. With line assembly off, how
     // long a read waits is decided by VMIN and VTIME, and a terminal left at
     // VMIN=0 makes `kal_stream_read' report zero --- which clause 7.4 says
