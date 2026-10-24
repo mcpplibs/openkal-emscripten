@@ -87,8 +87,17 @@ void* trampoline(void* p) {
 }
 }  // namespace
 
-int kal_task_start(void (*entry)(void*), void* arg, kal_task* out) {
+namespace {
+
+// A least size, version 0.16. The default is this platform's own and is not
+// raised to the 8 MiB the three native implementations give: a stack here is
+// linear memory taken from the heap when the context starts, not a reservation
+// committed as it is touched, so a larger default would cost every context its
+// whole size at once. A context that needs more asks, and a request the heap
+// cannot meet is the exhaustion kal_task_start_sized states.
+int start(void (*entry)(void*), void* arg, kal_uintptr want, kal_task* out) {
     if (entry == nullptr || out == nullptr) return kal_err_invalid;
+    if (want > (kal_uintptr{1} << 30)) return kal_err_no_memory;
     // THE ARGUMENT PAIR OUTLIVES THIS CALL, so it cannot be on this stack.
     // Freed by the new context rather than by this one, which is the only
     // arrangement that needs no synchronisation between them.
@@ -96,11 +105,36 @@ int kal_task_start(void (*entry)(void*), void* arg, kal_task* out) {
     if (s == nullptr) return kal_err_no_memory;
     s->entry = entry;
     s->arg = arg;
+    pthread_attr_t attr;
+    ::pthread_attr_init(&attr);
+    int rc = 0;
+    if (want != 0) {
+        size_t now = 0;
+        ::pthread_attr_getstacksize(&attr, &now);
+        const size_t w = (static_cast<size_t>(want) + 15u) & ~size_t{15};
+        if (w > now) rc = ::pthread_attr_setstacksize(&attr, w);
+    }
     pthread_t th{};
-    const int rc = ::pthread_create(&th, nullptr, &trampoline, s);
-    if (rc != 0) { ::free(s); errno = rc; return oke::last(); }
+    if (rc == 0) rc = ::pthread_create(&th, &attr, &trampoline, s);
+    ::pthread_attr_destroy(&attr);
+    if (rc != 0) {
+        ::free(s);
+        if (want != 0 && (rc == EAGAIN || rc == ENOMEM || rc == EINVAL)) return kal_err_no_memory;
+        errno = rc; return oke::last();
+    }
     out->h = reinterpret_cast<kal_uintptr>(th);
     return kal_ok;
+}
+
+}  // namespace
+
+int kal_task_start(void (*entry)(void*), void* arg, kal_task* out) {
+    return start(entry, arg, 0, out);
+}
+
+int kal_task_start_sized(void (*entry)(void*), void* arg, kal_uintptr stack_size,
+                         kal_task* out) {
+    return start(entry, arg, stack_size, out);
 }
 
 int kal_task_join(kal_task t) {
