@@ -161,10 +161,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.15.0"
+openkal = "0.16.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.4.0"
+openkal-emscripten = "0.5.0"
 ```
 
 ## Licence
