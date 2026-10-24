@@ -12,7 +12,7 @@ name: CI
 #                 does not have fails at LINK naming the symbol, which is
 #                 clause 6.2's second time and is the mechanism rather than a
 #                 defect
-#   task gating   the nine kal_task_* symbols exist in a `-pthread` link and
+#   task gating   the ten kal_task_* symbols exist in a `-pthread` link and
 #                 in no other, and the interfaces word follows the link
 #
 # ONE TOOLCHAIN, NOT TWO, AND THAT IS A PROPERTY OF THE TARGET RATHER THAN A
@@ -308,7 +308,7 @@ jobs:
       #   1. without the feature and the switch, no task symbol exists;
       #   2. the feature without the switch is refused before anything compiles,
       #      naming the feature;
-      #   3. with both, the nine symbols exist and a program that starts a task,
+      #   3. with both, the ten symbols exist and a program that starts a task,
       #      joins it, and asks each context for its own stack, exits 0 under
       #      node.
       #
@@ -395,8 +395,8 @@ jobs:
           n=$("$NM" --defined-only $objs 2>/dev/null \
               | awk '$2=="T"||$2=="W"{print $3}' | sed 's/^_//' \
               | grep -c '^kal_task' || true)
-          test "$n" -eq 9 || { echo "::error::expected 9 kal_task symbols with the switch, found $n"; exit 1; }
-          echo "  ok  nine task symbols with the switch"
+          test "$n" -eq 10 || { echo "::error::expected 10 kal_task symbols with the switch, found $n"; exit 1; }
+          echo "  ok  ten task symbols with the switch"
           ( cd "$work" && timeout 300 mcpp run --target wasm32-emscripten ) \
             || { echo "::error::the task program did not exit 0 under node"; exit 1; }
           echo "  ok  a task starts, runs and joins under node, and both contexts are told their own stack"

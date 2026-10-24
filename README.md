@@ -64,7 +64,7 @@ So the interface is carried by a feature:
 openkal-emscripten = { version = "0.4.0", features = ["threads"] }
 ```
 
-Without it, `src/threads/task.cpp` compiles to nothing, the nine `kal_task_*`
+Without it, `src/threads/task.cpp` compiles to nothing, the ten `kal_task_*`
 symbols do not exist, and `kal_interfaces()` does not claim the interface --
 the same treatment the three absent interfaces get, for the same reason.
 
