@@ -30,7 +30,7 @@ Twelve of the fifteen interfaces, in whole:
 | `openkal.time` | the monotonic granularity is measured rather than asked for, because a browser deliberately coarsens its clock |
 | `openkal.random` | `getentropy`, which is the host's cryptographic generator and not MEMFS's `/dev/urandom` |
 | `openkal.fs` | MEMFS, with one preopen at `/`; a name held open is removed at once; locks, capacity, a rename that does not replace and a rendezvous at a name are withheld by the property word |
-| `openkal.terminal` | asked of the machine, so the same module answers correctly under node and in a browser |
+| `openkal.terminal` | a standard stream is a terminal when the host says so (node's `tty.isatty`; never in a browser), because the C library answers for its own device even under a pipe; a terminal obeys control sequences |
 | `openkal.net` | the calls are real and the transport is a WebSocket proxy; `kal_net_props` claims nothing, and a rendezvous at a name is not supported |
 | `openkal.datagram` | the same |
 | `openkal.timeout` | `poll` and then the operation; the granularity is `poll`'s millisecond, not the clock's |
@@ -134,6 +134,11 @@ $ OPENKAL_CONFORMANCE_RUNNER=<node> \
 observations: 109 held, 0 did not hold, 14 not observed
 the implementation conforms in every observation made
 ```
+
+That is the run with a terminal (under `script`). Under a pipe, as in
+continuous integration, the standard streams are not interactive, the terminal
+section observes only that `get_mode` refuses them, and the count is 97 held,
+0 did not hold, 15 not observed.
 
 The fourteen unobserved are the interfaces this implementation does not provide
 (`process`, `exec`, `space`, and the three `abort` observations that need a

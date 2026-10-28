@@ -99,4 +99,9 @@ inline iptr fail() { return -static_cast<iptr>(last()); }
 // than a claim about which build this is.
 inline bool interrupted() { return errno == EINTR; }
 
+// Whether a descriptor reaches a terminal, as the HOST answers it (stream.cpp).
+// The C library's `isatty' is not the answer for the standard descriptors: it
+// wires them to its own terminal device whatever the host has behind them.
+bool host_terminal(int fd);
+
 }  // namespace oke
