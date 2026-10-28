@@ -1,7 +1,28 @@
 #include "sys.h"
 #include <openkal/stream.h>
 
+#include <emscripten.h>
 #include <unistd.h>
+
+// THE HOST IS ASKED WHETHER A STANDARD STREAM IS A TERMINAL, BECAUSE THE C
+// LIBRARY ANSWERS FOR ITS OWN DEVICE AND NOT FOR THE HOST'S STREAM.
+//
+// Emscripten wires descriptors 0, 1 and 2 to its terminal device whatever the
+// host has behind them, so `isatty' is 1 under a pipe as under a terminal.
+// Measured with emsdk 6.0.9 under node 26: `node prog.js | cat' and
+// `node prog.js < /dev/null > /dev/null' both report isatty 1, 1, 1, and
+// tcgetattr succeeds on each. node knows what its own streams are
+// (`tty.isatty'); a page has no terminal at all. Another descriptor is a file
+// or a socket of this C library, and the library's answer is the host's there.
+bool oke::host_terminal(int fd) {
+    if (::isatty(fd) != 1) return false;
+    if (fd > 2) return true;
+    return EM_ASM_INT({
+        if (typeof process === 'undefined' || !process.versions || !process.versions.node)
+            return 0;
+        try { return require('tty').isatty($0) ? 1 : 0; } catch (e) { return 0; }
+    }, fd) != 0;
+}
 
 extern "C" {
 
@@ -72,16 +93,12 @@ int kal_stream_flush(kal_stream s) {
     return oke::last();
 }
 
-// INTERACTIVE MEANS "A PERSON IS AT THE OTHER END", AND ON THIS PLATFORM THE
-// C LIBRARY'S ANSWER IS THE ONLY ONE AVAILABLE.
-//
-// `isatty` is answered by Emscripten from how the host wired the descriptor:
-// under node with a terminal it is true, under a captured pipe or in a browser
-// it is false. That is exactly the question, so no correction is applied --
-// and in particular this does not assume that descriptor 2 is a terminal
-// because a browser console looks like one.
+// INTERACTIVE MEANS "A PERSON IS AT THE OTHER END", and the host is who knows
+// (oke::host_terminal above): under node with a terminal it is true, under a
+// pipe or in a browser it is false. In particular this does not assume that
+// descriptor 2 is a terminal because a browser console looks like one.
 kal_uintptr kal_stream_props(kal_stream s) {
-    return ::isatty(static_cast<int>(s.h)) == 1
+    return oke::host_terminal(static_cast<int>(s.h))
          ? KAL_STREAM_PROP_INTERACTIVE : 0u;
 }
 

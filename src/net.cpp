@@ -219,4 +219,19 @@ void kal_net_close_listener(kal_net_listener l) {
 //              working.
 kal_uintptr kal_net_props(void) { return 0u; }
 
+// A RENDEZVOUS AT A NAME (version 0.17) IS NOT AVAILABLE HERE. The sockets of
+// this C library are a WebSocket proxy's, which carries a host and a port and
+// has no socket bound to a name in a directory, so no directory claims
+// KAL_FS_PROP_LOCAL_ENDPOINT (fs.cpp) and a call is kal_err_not_supported, as
+// clause 6.2 requires of a call upon one that does not claim it.
+int kal_net_listen_at(kal_dir, const char* name, kal_uintptr, kal_net_listener* out) {
+    if (name == nullptr || out == nullptr) return kal_err_invalid;
+    return kal_err_not_supported;
+}
+
+int kal_net_connect_at(kal_dir, const char* name, kal_uintptr, kal_net_conn* out) {
+    if (name == nullptr || out == nullptr) return kal_err_invalid;
+    return kal_err_not_supported;
+}
+
 }

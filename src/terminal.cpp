@@ -20,12 +20,25 @@
 // rather than a silent no-op, which is the failure a terminal interface can
 // least afford: a program that believes it turned echo off and did not is a
 // program that prints a password.
+//
+// THE RESOURCE IS AN INTERACTIVE STREAM, AND ONLY THE HOST CAN SAY WHICH IS
+// ONE. The C library answers tcgetattr for its own terminal device on every
+// standard descriptor, a pipe's included (stream.cpp), so each operation asks
+// oke::host_terminal first and refuses any other stream with
+// kal_err_not_supported, as the interface requires.
+//
+// KAL_TERM_SEQUENCES IS SET WHEREVER THERE IS A TERMINAL. The only terminal a
+// module reaches is node's, which writes the bytes to the host's terminal; that
+// interprets ECMA-48 (on Windows libuv interprets it where the console does
+// not). A request to clear the position is ignored, and get_mode reports it
+// set again, as the specification says of such an environment.
 extern "C" {
 
 constexpr tcflag_t kAlters = ISTRIP | INLCR | IGNCR | ICRNL;
 
 int kal_terminal_get_mode(kal_stream s, kal_uintptr* mode) {
     if (mode == nullptr) return kal_err_invalid;
+    if (!oke::host_terminal(static_cast<int>(s.h))) return kal_err_not_supported;
     struct termios t{};
     if (::tcgetattr(static_cast<int>(s.h), &t) != 0) return oke::last();
     kal_uintptr m = 0;
@@ -46,6 +59,7 @@ int kal_terminal_get_mode(kal_stream s, kal_uintptr* mode) {
     // carriage return rewritten into the other, a carriage return discarded ---
     // is off. Under node these are the host's own.
     if ((t.c_iflag & kAlters) == 0) m |= KAL_TERM_PASS_INPUT;
+    m |= KAL_TERM_SEQUENCES;
     *mode = m;
     return kal_ok;
 }
@@ -53,6 +67,7 @@ int kal_terminal_get_mode(kal_stream s, kal_uintptr* mode) {
 int kal_terminal_set_mode(kal_stream s, kal_uintptr mode) {
     struct termios t{};
     const int fd = static_cast<int>(s.h);
+    if (!oke::host_terminal(fd)) return kal_err_not_supported;
     if (::tcgetattr(fd, &t) != 0) return oke::last();
     const bool reserved_none = (t.c_lflag & (ISIG | IEXTEN)) == 0 &&
                                (t.c_iflag & IXON) == 0;
@@ -100,6 +115,7 @@ int kal_terminal_set_mode(kal_stream s, kal_uintptr mode) {
 }
 
 int kal_terminal_size(kal_stream s, kal_uintptr* cols, kal_uintptr* rows) {
+    if (!oke::host_terminal(static_cast<int>(s.h))) return kal_err_not_supported;
     struct winsize ws{};
     if (::ioctl(static_cast<int>(s.h), TIOCGWINSZ, &ws) != 0) return oke::last();
     // A ZERO DIMENSION IS NOT A SIZE. Emscripten answers the ioctl with a
@@ -118,6 +134,7 @@ int kal_terminal_size(kal_stream s, kal_uintptr* cols, kal_uintptr* rows) {
 // switch between them.
 kal_uintptr kal_terminal_props(kal_stream s) {
     kal_uintptr p = 0;
+    if (!oke::host_terminal(static_cast<int>(s.h))) return p;
     struct termios t{};
     if (::tcgetattr(static_cast<int>(s.h), &t) == 0) p |= KAL_TERM_PROP_MODE;
     struct winsize ws{};

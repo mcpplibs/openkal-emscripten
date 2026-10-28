@@ -111,6 +111,25 @@ kal_intptr host_arg(kal_uintptr index, char* out, kal_uintptr cap) {
     return n < 0 ? -kal_err_not_found : static_cast<kal_intptr>(n);
 }
 
+// THE SCRIPT THE HOST STARTED, which under node is the image (version 0.17).
+// node resolves `process.argv[1]` to an absolute name before the program runs,
+// so it is the name the environment resolved and not the one its starter
+// typed; a page that instantiates a module has started no named image, and
+// the answer there is not found. The copy is `host_arg`'s, for its reasons.
+kal_intptr host_script(char* out, kal_uintptr cap) {
+    const int n = EM_ASM_INT({
+        if (typeof process === 'undefined' || !process.argv || process.argv.length < 2)
+            return -1;
+        var enc = new TextEncoder().encode(process.argv[1]);
+        if ($0 !== 0 && $1 !== 0) {
+            var take = Math.min(enc.length, $1);
+            HEAPU8.set(enc.subarray(0, take), $0);
+        }
+        return enc.length;
+    }, out, static_cast<int>(cap));
+    return n < 0 ? -kal_err_not_found : static_cast<kal_intptr>(n);
+}
+
 kal_intptr copy_out(const char* s, kal_uintptr n, char* out, kal_uintptr cap) {
     // THE LENGTH IS REPORTED WHETHER OR NOT IT FITS, which is what lets a
     // caller size a buffer with one call and fill it with a second. A
@@ -180,6 +199,32 @@ kal_intptr kal_env_var_at(kal_uintptr index, char* out, kal_uintptr cap) {
     if (index >= n) return -kal_err_not_found;
     const char* s = environ[index];
     return copy_out(s, ::strlen(s), out, cap);
+}
+
+// THE IMAGE, THE LOADER AND THE SYSTEM (version 0.17).
+//
+// The image is the script node was given (`host_script`); a page has none.
+//
+// THERE IS NO LOADER TO NAME. The program is built for this environment, and
+// node and a page instantiate it as they instantiate any module: nothing above
+// openkal loaded an image here (clause 12), so the answer is the one the
+// specification gives a program built for its environment, not found.
+//
+// THE SYSTEM IS `emscripten`, the name mcpp's target vocabulary and every
+// build system that targets this platform give it. It is the same under node
+// and in a page because the conventions it selects are this C library's and
+// MEMFS's, which do not change with the host.
+kal_intptr kal_env_image(char* out, kal_uintptr cap) {
+    return host_script(out, cap);
+}
+
+kal_intptr kal_env_loader(char*, kal_uintptr) {
+    return -kal_err_not_found;
+}
+
+kal_intptr kal_env_system(char* out, kal_uintptr cap) {
+    static constexpr char kName[] = "emscripten";
+    return copy_out(kName, sizeof kName - 1, out, cap);
 }
 
 }
