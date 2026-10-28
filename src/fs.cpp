@@ -233,15 +233,25 @@ int kal_fs_preopen(kal_uintptr index, kal_dir* out,
 //   MAKE_LINKS       `symlink` is implemented.
 //   EXECUTABLE       the mode a node was given is kept, and `chmod` changes it.
 //
+//   REMOVE_OPEN      a name is removed at once although a file of that name is
+//                    open: MEMFS unlinks the node from its directory and an open
+//                    stream keeps the node (measured: the name is absent, the
+//                    file reads back, and its directory is removed). 0.17.
+//
 // WITHHELD: LOCKS, because MEMFS has no lock table and a wasm module has no
 // second process to contend with -- so a lock that always succeeded would tell
 // a caller it had exclusivity it was never given. CAPACITY, because the answer
 // would be the module's heap limit, which is not the quantity the caller is
-// asking about.
+// asking about. RENAME_NO_REPLACE, because the C library has no rename that
+// refuses to replace (no `renameat2`, and `linkat` reports EMLINK on MEMFS,
+// so the link-then-unlink form is not available either), and a test followed
+// by a rename is two acts; kal_fs_rename_flags says so (below). LOCAL_ENDPOINT,
+// because there is no socket bound to a name on this platform (net.cpp).
 kal_uintptr kal_fs_props(kal_dir) {
     return KAL_FS_PROP_CASE_SENSITIVE | KAL_FS_PROP_LINKS
          | KAL_FS_PROP_MODIFIED_TIME  | KAL_FS_PROP_ATOMIC_RENAME
-         | KAL_FS_PROP_MAKE_LINKS | KAL_FS_PROP_EXECUTABLE;
+         | KAL_FS_PROP_MAKE_LINKS | KAL_FS_PROP_EXECUTABLE
+         | KAL_FS_PROP_REMOVE_OPEN;
 }
 
 int kal_fs_open_dir(kal_dir base, const char* name, kal_uintptr len,
@@ -425,6 +435,25 @@ int kal_fs_rename(kal_dir from, const char* a, kal_uintptr alen,
     if (!cname(a, alen, na) || !cname(b, blen, nb)) return kal_err_invalid;
     if (::renameat(fd, na, td, nb) != 0) return oke::last();
     return kal_ok;
+}
+
+// kal_fs_rename WITH A FLAGS WORD (version 0.17). A word of zero is the
+// rename above. KAL_RENAME_NO_REPLACE is not claimed by kal_fs_props, so it is
+// kal_err_not_supported and renames nothing, as clause 6.2 requires of a
+// request upon a volume that does not claim it; the handles and names are
+// checked first, so an invalid request is reported as one. A position the
+// specification has not assigned is kal_err_invalid.
+int kal_fs_rename_flags(kal_dir from, const char* a, kal_uintptr alen,
+                        kal_dir to, const char* b, kal_uintptr blen,
+                        kal_uintptr flags) {
+    if ((flags & ~static_cast<kal_uintptr>(KAL_RENAME_NO_REPLACE)) != 0) return kal_err_invalid;
+    if (flags == 0) return kal_fs_rename(from, a, alen, to, b, blen);
+    const int fd = oke::unpack(from.h);
+    const int td = oke::unpack(to.h);
+    if (fd < 0 || td < 0) return kal_err_invalid;
+    char na[kMaxName + 1], nb[kMaxName + 1];
+    if (!cname(a, alen, na) || !cname(b, blen, nb)) return kal_err_invalid;
+    return kal_err_not_supported;
 }
 
 int kal_fs_set_modified(kal_file f, kal_u64 modified_ns) {

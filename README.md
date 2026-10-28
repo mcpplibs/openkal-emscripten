@@ -26,12 +26,12 @@ Twelve of the fifteen interfaces, in whole:
 | `openkal.abort` | the message reaches the host through a descriptor, not stdio |
 | `openkal.stream` | the standard streams, borrowed |
 | `openkal.memory` | `aligned_alloc`; the granularity is the alignment honoured, not the wasm page |
-| `openkal.env` | variables from `environ`; arguments from the host, which is the one question the C library between them does not answer |
+| `openkal.env` | variables from `environ`; arguments from the host, which is the one question the C library between them does not answer; the image is the script node was given (not found in a page), there is no loader, and the system is `emscripten` |
 | `openkal.time` | the monotonic granularity is measured rather than asked for, because a browser deliberately coarsens its clock |
 | `openkal.random` | `getentropy`, which is the host's cryptographic generator and not MEMFS's `/dev/urandom` |
-| `openkal.fs` | MEMFS, with one preopen at `/`; locks and capacity are withheld by the property word |
+| `openkal.fs` | MEMFS, with one preopen at `/`; a name held open is removed at once; locks, capacity, a rename that does not replace and a rendezvous at a name are withheld by the property word |
 | `openkal.terminal` | asked of the machine, so the same module answers correctly under node and in a browser |
-| `openkal.net` | the calls are real and the transport is a WebSocket proxy; `kal_net_props` claims nothing |
+| `openkal.net` | the calls are real and the transport is a WebSocket proxy; `kal_net_props` claims nothing, and a rendezvous at a name is not supported |
 | `openkal.datagram` | the same |
 | `openkal.timeout` | `poll` and then the operation; the granularity is `poll`'s millisecond, not the clock's |
 
@@ -61,7 +61,7 @@ So the interface is carried by a feature:
 
 ```toml
 [dependencies]
-openkal-emscripten = { version = "0.4.0", features = ["threads"] }
+openkal-emscripten = { version = "0.6.0", features = ["threads"] }
 ```
 
 Without it, `src/threads/task.cpp` compiles to nothing, the ten `kal_task_*`
@@ -124,25 +124,26 @@ that the region contains a local of that context.
 
 ## Conformance
 
-Measured 2026-09-11, `emsdk 6.0.9`, run under node:
+Measured 2026-10-28 against openkal 0.17.1, `emsdk 6.0.9`, run under node:
 
 ```
 $ OPENKAL_CONFORMANCE_RUNNER=<node> \
   bash openkal/tools/run-conformance.sh openkal-emscripten . \
        core,env,time,random,fs,terminal,timeout --target wasm32-emscripten
 
-observations: 86 held, 0 did not hold, 13 not observed
+observations: 109 held, 0 did not hold, 14 not observed
 the implementation conforms in every observation made
 ```
 
-The thirteen unobserved are the interfaces this implementation does not provide
+The fourteen unobserved are the interfaces this implementation does not provide
 (`process`, `exec`, `space`, and the three `abort` observations that need a
-started copy of the suite to make), plus the four capability words it withholds
-(`fs` locks and capacity, `task` timeout and thread-local storage), plus the
-two environment observations that need the runner to set a variable.
+started copy of the suite to make), the interfaces the run did not select
+(`task`, `net`, `datagram`), the three capability words of the volume it
+withholds (locks, capacity, a rename that does not replace), and the two
+environment observations that need the runner to set a variable.
 
 The exported surface is checked against the specification's own `SURFACE.txt`:
-86 names, twelve complete groups, three absent groups, and nothing beginning
+85 names, twelve complete groups, three absent groups, and nothing beginning
 with `kal_` that the specification does not name.
 
 ## Building it, and what it needs
@@ -161,10 +162,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.16.0"
+openkal = "0.17.1"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.5.0"
+openkal-emscripten = "0.6.0"
 ```
 
 ## Licence
