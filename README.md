@@ -127,31 +127,33 @@ that the region contains a local of that context.
 
 ## Conformance
 
-Measured 2026-10-28 against openkal 0.17.1, `emsdk 6.0.9`, run under node:
+Measured 2026-10-31 against openkal 0.18.0, `emsdk 6.0.9`, run under node in
+continuous integration:
 
 ```
 $ OPENKAL_CONFORMANCE_RUNNER=<node> \
   bash openkal/tools/run-conformance.sh openkal-emscripten . \
        core,env,time,random,fs,terminal,timeout --target wasm32-emscripten
 
-observations: 109 held, 0 did not hold, 14 not observed
+observations: 97 held, 0 did not hold, 16 not observed
 the implementation conforms in every observation made
 ```
 
-That is the run with a terminal (under `script`). Under a pipe, as in
-continuous integration, the standard streams are not interactive, the terminal
-section observes only that `get_mode` refuses them, and the count is 97 held,
-0 did not hold, 15 not observed.
+The standard streams there are a pipe, so the terminal section observes only
+that `get_mode` refuses them. With a terminal (under `script`), measured
+2026-10-28 against openkal 0.17.1, the count was 109 held, 0 did not hold, 14
+not observed.
 
-The fourteen unobserved are the interfaces this implementation does not provide
-(`process`, `exec`, `space`, and the three `abort` observations that need a
-started copy of the suite to make), the interfaces the run did not select
+The unobserved are the interfaces this implementation does not provide
+(`process`, `exec`, `space`, `map`, and the three `abort` observations that need
+a started copy of the suite to make), the interfaces the run did not select
 (`task`, `net`, `datagram`), the three capability words of the volume it
-withholds (locks, capacity, a rename that does not replace), and the two
-environment observations that need the runner to set a variable.
+withholds (locks, capacity, a rename that does not replace), the two
+environment observations that need the runner to set a variable, and under a
+pipe the terminal's modes.
 
 The exported surface is checked against the specification's own `SURFACE.txt`:
-85 names, twelve complete groups, three absent groups, and nothing beginning
+85 names, twelve complete groups, four absent groups, and nothing beginning
 with `kal_` that the specification does not name.
 
 ## Building it, and what it needs
