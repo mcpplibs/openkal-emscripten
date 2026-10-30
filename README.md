@@ -18,7 +18,7 @@ get right is the places where the C library's vocabulary and openkal's do
 
 ## What it provides
 
-Twelve of the fifteen interfaces, in whole:
+Twelve of the sixteen interfaces, in whole:
 
 | interface | notes |
 |---|---|
@@ -37,13 +37,16 @@ Twelve of the fifteen interfaces, in whole:
 
 ## What it does not provide, and why the absence is the report
 
-`openkal.process`, `openkal.exec` and `openkal.space` are **not** provided.
-There is no fork and no exec on this platform; there is no way to publish bytes
-as executable code, because a wasm module is instantiated by the host from
-bytes it validates; and a module has one linear memory and cannot obtain a
-second.
+`openkal.process`, `openkal.exec`, `openkal.space` and `openkal.map` are
+**not** provided. There is no fork and no exec on this platform; there is no way
+to publish bytes as executable code, because a wasm module is instantiated by
+the host from bytes it validates; a module has one linear memory and cannot
+obtain a second; and the C library's `mmap` of a file copies the file's bytes
+into linear memory, so a shared region would neither show another region's
+writes nor carry its own to the file before a sync, which clause 11 requires of
+a shared region.
 
-A program that uses one of those seventeen names fails at **link**, naming the
+A program that uses one of those twenty names fails at **link**, naming the
 symbol. That is clause 6.2's second time, and it is the mechanism rather than a
 defect: providing `kal_process_spawn` so that it returned an error would be the
 shape the specification forbids -- present and always failing, which the caller
@@ -61,12 +64,12 @@ So the interface is carried by a feature:
 
 ```toml
 [dependencies]
-openkal-emscripten = { version = "0.6.0", features = ["threads"] }
+openkal-emscripten = { version = "0.7.0", features = ["threads"] }
 ```
 
 Without it, `src/threads/task.cpp` compiles to nothing, the ten `kal_task_*`
 symbols do not exist, and `kal_interfaces()` does not claim the interface --
-the same treatment the three absent interfaces get, for the same reason.
+the same treatment the four absent interfaces get, for the same reason.
 
 **The switch belongs to the artefact, and the root manifest states it.**
 `-pthread` changes the module configuration of *every* translation unit in the
@@ -124,31 +127,33 @@ that the region contains a local of that context.
 
 ## Conformance
 
-Measured 2026-10-28 against openkal 0.17.1, `emsdk 6.0.9`, run under node:
+Measured 2026-10-31 against openkal 0.18.0, `emsdk 6.0.9`, run under node in
+continuous integration:
 
 ```
 $ OPENKAL_CONFORMANCE_RUNNER=<node> \
   bash openkal/tools/run-conformance.sh openkal-emscripten . \
        core,env,time,random,fs,terminal,timeout --target wasm32-emscripten
 
-observations: 109 held, 0 did not hold, 14 not observed
+observations: 97 held, 0 did not hold, 16 not observed
 the implementation conforms in every observation made
 ```
 
-That is the run with a terminal (under `script`). Under a pipe, as in
-continuous integration, the standard streams are not interactive, the terminal
-section observes only that `get_mode` refuses them, and the count is 97 held,
-0 did not hold, 15 not observed.
+The standard streams there are a pipe, so the terminal section observes only
+that `get_mode` refuses them. With a terminal (under `script`), measured
+2026-10-28 against openkal 0.17.1, the count was 109 held, 0 did not hold, 14
+not observed.
 
-The fourteen unobserved are the interfaces this implementation does not provide
-(`process`, `exec`, `space`, and the three `abort` observations that need a
-started copy of the suite to make), the interfaces the run did not select
+The unobserved are the interfaces this implementation does not provide
+(`process`, `exec`, `space`, `map`, and the three `abort` observations that need
+a started copy of the suite to make), the interfaces the run did not select
 (`task`, `net`, `datagram`), the three capability words of the volume it
-withholds (locks, capacity, a rename that does not replace), and the two
-environment observations that need the runner to set a variable.
+withholds (locks, capacity, a rename that does not replace), the two
+environment observations that need the runner to set a variable, and under a
+pipe the terminal's modes.
 
 The exported surface is checked against the specification's own `SURFACE.txt`:
-85 names, twelve complete groups, three absent groups, and nothing beginning
+85 names, twelve complete groups, four absent groups, and nothing beginning
 with `kal_` that the specification does not name.
 
 ## Building it, and what it needs
@@ -167,10 +172,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.17.1"
+openkal = "0.18.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.6.0"
+openkal-emscripten = "0.7.0"
 ```
 
 ## Licence

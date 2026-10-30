@@ -8,7 +8,7 @@ name: CI
 #   surface       the exported names are exactly the eighty-six the
 #                 specification lists for those twelve groups, and nothing else
 #                 beginning with kal_
-#   absence       a program that uses one of the three interfaces this platform
+#   absence       a program that uses one of the four interfaces this platform
 #                 does not have fails at LINK naming the symbol, which is
 #                 clause 6.2's second time and is the mechanism rather than a
 #                 defect
@@ -283,8 +283,8 @@ jobs:
               echo "  ok  openkal.$g is whole"
             fi
           done
-          # And the three this platform does not have export nothing at all.
-          for g in process exec space; do
+          # And the four this platform does not have export nothing at all.
+          for g in process exec space map; do
             present=""
             while read -r s; do
               grep -qx "$s" /tmp/exported.txt && present="$present $s"
