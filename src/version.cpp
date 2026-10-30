@@ -27,8 +27,13 @@ kal_u64 kal_version(void) { return KAL_VERSION; }
 //             different operation with a different owner.
 //   SPACE     there is no second address space. A module has one linear
 //             memory and cannot obtain another.
+//   MAP       there is no mapping of a file. The C library's `mmap` of a
+//             file copies its bytes into linear memory, so a shared region
+//             would not show another region's writes, nor its own reach the
+//             file before a sync -- the two things clause 11 makes a shared
+//             region.
 //
-// A program that uses one of the seventeen names in those three groups fails
+// A program that uses one of the twenty names in those four groups fails
 // AT LINK naming the symbol, which is clause 6.2's second time and is the
 // mechanism rather than a defect. Providing them so that they return an error
 // would be the shape clause 6.2 forbids -- present and always failing, which
