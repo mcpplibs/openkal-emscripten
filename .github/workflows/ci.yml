@@ -395,8 +395,10 @@ jobs:
           n=$("$NM" --defined-only $objs 2>/dev/null \
               | awk '$2=="T"||$2=="W"{print $3}' | sed 's/^_//' \
               | grep -c '^kal_task' || true)
-          test "$n" -eq 10 || { echo "::error::expected 10 kal_task symbols with the switch, found $n"; exit 1; }
-          echo "  ok  ten task symbols with the switch"
+          # As many as the specification's surface names: the interface is provided whole.
+          want=$(grep -c '^kal_task' .spec/SURFACE.txt)
+          test "$n" -eq "$want" || { echo "::error::expected $want kal_task symbols with the switch (SURFACE.txt), found $n"; exit 1; }
+          echo "  ok  every task symbol of SURFACE.txt with the switch ($n)"
           ( cd "$work" && timeout 300 mcpp run --target wasm32-emscripten ) \
             || { echo "::error::the task program did not exit 0 under node"; exit 1; }
           echo "  ok  a task starts, runs and joins under node, and both contexts are told their own stack"
