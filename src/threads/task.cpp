@@ -149,6 +149,18 @@ kal_uintptr kal_task_parallelism(void) {
     return n > 0 ? static_cast<kal_uintptr>(n) : 1u;
 }
 
+// THE PLATFORM STATES NO CORES: a browser reports the logical processors
+// (`navigator.hardwareConcurrency') and nothing beneath them. Zero is "cannot
+// say", and a caller sizes by kal_task_parallelism, as it would have.
+kal_uintptr kal_task_cores(void) { return 0; }
+
+// A WORKER'S CLAIM ON THE PROCESSORS IS THE BROWSER'S, and nothing a page runs
+// can lower it. KAL_TASK_PROP_PRIORITY is withheld below for that reason.
+int kal_task_set_priority(kal_uintptr priority) {
+    if (priority > KAL_TASK_PRIORITY_BACKGROUND) return kal_err_invalid;
+    return kal_err_not_supported;
+}
+
 
 // Yielding is a real operation here: a worker gives way to the host's
 // scheduler.

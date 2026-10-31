@@ -41,7 +41,7 @@ kal_u64 kal_version(void) { return KAL_VERSION; }
 // known at link time to run time.
 //   TASK      only in a `-pthread` link, and the word follows the link rather
 //             than being written down. Without it `src/threads/task.cpp` is
-//             not compiled at all, so the eight `kal_task_*` symbols are
+//             not compiled at all, so the `kal_task_*` symbols are
 //             absent and the same mechanism reports them -- an interface is
 //             provided in whole or not at all, and a `kal_task_start` that
 //             could not start anything is the shape clause 6.2 forbids.
