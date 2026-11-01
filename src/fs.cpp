@@ -350,6 +350,36 @@ int kal_fs_truncate(kal_file f, kal_u64 size) {
     return kal_ok;
 }
 
+// TRANSFERS AT AN OFFSET (openkal 0.20): the C library's `pread' and `pwrite',
+// which this platform's file system answers without the position (WASI's
+// `fd_pread' and `fd_pwrite' where the program runs under WASI). The write is
+// completed as a stream's is; an interruption is retried.
+kal_intptr kal_fs_read_at(kal_file f, void* buf, kal_uintptr len, kal_u64 offset) {
+    const int fd = oke::unpack(f.h);
+    if (fd < 0) return -kal_err_invalid;
+    for (;;) {
+        const ssize_t r = ::pread(fd, buf, len, static_cast<off_t>(offset));
+        if (r < 0 && errno == EINTR) continue;
+        if (r < 0) return -oke::last();
+        return static_cast<kal_intptr>(r);
+    }
+}
+
+kal_intptr kal_fs_write_at(kal_file f, const void* buf, kal_uintptr len, kal_u64 offset) {
+    const int fd = oke::unpack(f.h);
+    if (fd < 0) return -kal_err_invalid;
+    const auto* p = static_cast<const unsigned char*>(buf);
+    kal_uintptr done = 0;
+    while (done < len) {
+        const ssize_t r = ::pwrite(fd, p + done, len - done, static_cast<off_t>(offset + done));
+        if (r < 0 && errno == EINTR) continue;
+        if (r < 0) return done != 0 ? static_cast<kal_intptr>(done) : -oke::last();
+        if (r == 0) break;
+        done += static_cast<kal_uintptr>(r);
+    }
+    return static_cast<kal_intptr>(done);
+}
+
 int kal_fs_info(kal_dir base, const char* name, kal_uintptr len,
                 kal_uintptr flags, kal_u32 wanted, kal_node_info* out) {
     if (out == nullptr) return kal_err_invalid;
