@@ -229,12 +229,23 @@ kal_uintptr kal_fs_max_name(void) { return kMaxName; }
 
 kal_uintptr kal_fs_preopen_count(void) { return 1u; }
 
+// ONE DIRECTORY FOR THE LIFE OF THE PROGRAM, as a preopen is (0.12.0). The
+// root was opened again at each enquiry, so each answer was another handle:
+// a walk begun on one and continued on the next was refused as a walk of
+// another directory, and each enquiry kept a descriptor open.
 int kal_fs_preopen(kal_uintptr index, kal_dir* out,
                    char* name_out, kal_uintptr name_cap,
                    kal_uintptr* name_len) {
     if (index != 0 || out == nullptr) return kal_err_invalid;
-    const int fd = ::open("/", O_RDONLY | O_DIRECTORY);
-    if (fd < 0) return oke::last();
+    static volatile int root = -1;
+    int fd = __atomic_load_n(&root, __ATOMIC_ACQUIRE);
+    if (fd < 0) {
+        const int opened = ::open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (opened < 0) return oke::last();
+        int expected = -1;
+        if (__atomic_compare_exchange_n(&root, &expected, opened, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) fd = opened;
+        else { ::close(opened); fd = expected; }
+    }
     out->h = oke::pack(fd);
     if (name_len != nullptr) *name_len = 1;
     if (name_out != nullptr && name_cap != 0) name_out[0] = '/';
