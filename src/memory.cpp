@@ -1,7 +1,10 @@
 #include "sys.h"
 #include <openkal/memory.h>
 
+#include <emscripten/heap.h>
+#include <malloc.h>
 #include <stdlib.h>
+#include <string.h>
 
 extern "C" {
 
@@ -48,6 +51,25 @@ void kal_free(void* p, kal_uintptr size, kal_uintptr align) {
     (void)size;
     (void)align;
     ::free(p);
+}
+
+// WHAT THE MODULE MAY USE, AND WHAT IT CAN BE GIVEN NOW (0.23): the most its
+// linear memory may grow to, and that growth not yet taken with what the C
+// library's allocator holds free within what was. A module's memory is its own,
+// so nothing here is taken from another program.
+int kal_memory_info(kal_memory_status* out) {
+    if (out == nullptr || out->self_size < sizeof(kal_u32) * 2) return kal_err_invalid;
+    kal_memory_status v{};
+    v.self_size = out->self_size;
+    const size_t most = ::emscripten_get_heap_max();
+    const size_t now = ::emscripten_get_heap_size();
+    const struct mallinfo m = ::mallinfo();
+    v.total_bytes = most;
+    v.available_bytes = (most > now ? most - now : 0) + static_cast<kal_u64>(m.fordblks);
+    v.present = KAL_MSTATUS_TOTAL | KAL_MSTATUS_AVAILABLE;
+    const kal_u32 n = out->self_size < sizeof v ? out->self_size : static_cast<kal_u32>(sizeof v);
+    ::memcpy(out, &v, n);
+    return kal_ok;
 }
 
 }
