@@ -49,6 +49,9 @@ a shared region.
 openkal 0.21 adds to two of them --- `kal_exec_map_part` to `openkal.exec`, and
 the processor time of an ended program to `openkal.process` --- so 0.10.0 is
 this implementation written against 0.21, with nothing else changed.
+openkal 0.22 adds the null device at a position of a started program to
+`openkal.process`, so 0.11.0 is this implementation written against 0.22, with
+nothing else changed.
 
 A program that uses one of those twenty-one names fails at **link**, naming the
 symbol. That is clause 6.2's second time, and it is the mechanism rather than a
@@ -68,7 +71,7 @@ So the interface is carried by a feature:
 
 ```toml
 [dependencies]
-openkal-emscripten = { version = "0.10.0", features = ["threads"] }
+openkal-emscripten = { version = "0.11.0", features = ["threads"] }
 ```
 
 Without it, `src/threads/task.cpp` compiles to nothing, the ten `kal_task_*`
@@ -176,10 +179,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.21.0"
+openkal = "0.22.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.10.0"
+openkal-emscripten = "0.11.0"
 ```
 
 ## Licence
