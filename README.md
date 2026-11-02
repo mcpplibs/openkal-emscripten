@@ -54,7 +54,16 @@ openkal 0.22 adds the null device at a position of a started program to
 nothing else changed. openkal 0.23 adds a region at an address to
 `openkal.exec`, and a name with every link followed to `openkal.fs`, which
 0.12.0 answers from the name MEMFS keeps for a descriptor of it
-(`kal_fs_resolved_name`, `/proc/self/fd/N`).
+(`kal_fs_resolved_name`, `/proc/self/fd/N`). It also adds a handle with less
+(`kal_fs_dir_attenuate`), which 0.12.0 answers with the table of the other
+implementations over this C library --- read-only handles, a handle that states
+nothing beneath changes, and a record appended through the descriptor's name
+reopened to append --- a listing with attributes (`kal_fs_list_next_info`, the
+rest of an entry asked of it), what the module may still use
+(`kal_memory_info`: the heap's limit, what is not grown yet and what the
+allocator holds free), and the resource preference (`KAL_RESOURCES`). A listing
+now ends with `kal_ok`, as the specification states from 0.23; it ended with
+`kal_err_not_found` before.
 
 A program that uses one of those thirty names fails at **link**, naming the
 symbol. That is clause 6.2's second time, and it is the mechanism rather than a

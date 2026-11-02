@@ -1,4 +1,5 @@
 #include "sys.h"
+#include "rights.h"
 #include <openkal/abort.h>
 
 #include <stdlib.h>
@@ -41,6 +42,8 @@ KAL_NORETURN void kal_abort(const char* msg, kal_uintptr len) {
 //
 // The streams this implementation hands out are descriptors, so there is
 // nothing of openkal's own left buffered to lose.
-KAL_NORETURN void kal_exit(int code) { ::_Exit(code); }
+// What the program's attenuated handles recorded is written, and ended, first
+// (0.23, fs.h).
+KAL_NORETURN void kal_exit(int code) { oke::rights::end_of_program(); ::_Exit(code); }
 
 }

@@ -227,4 +227,14 @@ kal_intptr kal_env_system(char* out, kal_uintptr cap) {
     return copy_out(kName, sizeof kName - 1, out, cap);
 }
 
+// THE RESOURCE PREFERENCE (0.23): KAL_RESOURCES, as the other implementations
+// convey it, set by whoever runs the module; balanced where it is not.
+int kal_env_resources(void) {
+    const char* v = ::getenv("KAL_RESOURCES");
+    if (v == nullptr) return KAL_RESOURCES_BALANCED;
+    if (::strcmp(v, "performance") == 0) return KAL_RESOURCES_PERFORMANCE;
+    if (::strcmp(v, "economy") == 0) return KAL_RESOURCES_ECONOMY;
+    return KAL_RESOURCES_BALANCED;
+}
+
 }
