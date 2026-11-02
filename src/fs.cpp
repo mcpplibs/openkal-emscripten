@@ -700,16 +700,22 @@ kal_intptr kal_fs_resolved_name(kal_dir base, const char* name, kal_uintptr len,
 //
 // `fdopendir` takes ownership of the descriptor it is given, and `closedir`
 // closes it -- so passing the caller's `kal_dir` directly would close a handle
-// the caller still holds and still owns. `dup` is therefore not an
-// optimisation to skip: the iterator's lifetime and the directory handle's are
-// separate, which is exactly what openkal's two words say.
+// the caller still holds and still owns. A descriptor of the walk's own is
+// therefore not an optimisation to skip: the iterator's lifetime and the
+// directory handle's are separate, which is exactly what openkal's two words say.
+//
+// OPENED AGAIN, NOT DUPLICATED (0.12.0). A duplicate shares the directory's
+// position, and this file system does not move a directory's back to its
+// start: a second walk of a directory began where the first had ended, and
+// listed nothing (measured by openkal 0.23's listing with attributes, which
+// lists a directory listed before). The directory opened through itself has
+// a position of its own, as the other implementations' walks do.
 int kal_fs_list_begin(kal_dir d, kal_uintptr* iter) {
     if (iter == nullptr) return kal_err_invalid;
     const int fd = oke::unpack(d.h);
     if (fd < 0) return kal_err_invalid;
-    const int copy = ::dup(fd);
+    const int copy = ::openat(fd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (copy < 0) return oke::last();
-    if (::lseek(copy, 0, SEEK_SET) < 0) { /* a directory may refuse; harmless */ }
     DIR* dir = ::fdopendir(copy);
     if (dir == nullptr) { const int e = oke::last(); ::close(copy); return e; }
     auto* s = static_cast<listing*>(::malloc(sizeof(listing)));
