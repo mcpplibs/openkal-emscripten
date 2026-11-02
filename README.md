@@ -29,7 +29,7 @@ Twelve of the sixteen interfaces, in whole:
 | `openkal.env` | variables from `environ`; arguments from the host, which is the one question the C library between them does not answer; the image is the script node was given (not found in a page), there is no loader, and the system is `emscripten` |
 | `openkal.time` | the monotonic granularity is measured rather than asked for, because a browser deliberately coarsens its clock |
 | `openkal.random` | `getentropy`, which is the host's cryptographic generator and not MEMFS's `/dev/urandom` |
-| `openkal.fs` | MEMFS, with one preopen at `/`; a name held open is removed at once; locks, capacity, a rename that does not replace and a rendezvous at a name are withheld by the property word |
+| `openkal.fs` | MEMFS, with one preopen at `/`; a name held open is removed at once; a name with every link followed is the one MEMFS keeps for a descriptor of it; locks, capacity, a rename that does not replace and a rendezvous at a name are withheld by the property word |
 | `openkal.terminal` | a standard stream is a terminal when the host says so (node's `tty.isatty`; never in a browser), because the C library answers for its own device even under a pipe; a terminal obeys control sequences |
 | `openkal.net` | the calls are real and the transport is a WebSocket proxy; `kal_net_props` claims nothing, and a rendezvous at a name is not supported |
 | `openkal.datagram` | the same |
@@ -51,9 +51,12 @@ the processor time of an ended program to `openkal.process` --- so 0.10.0 is
 this implementation written against 0.21, with nothing else changed.
 openkal 0.22 adds the null device at a position of a started program to
 `openkal.process`, so 0.11.0 is this implementation written against 0.22, with
-nothing else changed.
+nothing else changed. openkal 0.23 adds a region at an address to
+`openkal.exec`, and a name with every link followed to `openkal.fs`, which
+0.12.0 answers from the name MEMFS keeps for a descriptor of it
+(`kal_fs_resolved_name`, `/proc/self/fd/N`).
 
-A program that uses one of those twenty-one names fails at **link**, naming the
+A program that uses one of those thirty names fails at **link**, naming the
 symbol. That is clause 6.2's second time, and it is the mechanism rather than a
 defect: providing `kal_process_spawn` so that it returned an error would be the
 shape the specification forbids -- present and always failing, which the caller
@@ -71,7 +74,7 @@ So the interface is carried by a feature:
 
 ```toml
 [dependencies]
-openkal-emscripten = { version = "0.11.0", features = ["threads"] }
+openkal-emscripten = { version = "0.12.0", features = ["threads"] }
 ```
 
 Without it, `src/threads/task.cpp` compiles to nothing, the ten `kal_task_*`
@@ -179,10 +182,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.22.0"
+openkal = "0.23.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.11.0"
+openkal-emscripten = "0.12.0"
 ```
 
 ## Licence

@@ -3,6 +3,7 @@
 #include <openkal/fs.h>
 
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stddef.h>     // offsetof
 #include <stdio.h>      // renameat, which POSIX places here and not in <unistd.h>
@@ -251,7 +252,7 @@ kal_uintptr kal_fs_props(kal_dir) {
     return KAL_FS_PROP_CASE_SENSITIVE | KAL_FS_PROP_LINKS
          | KAL_FS_PROP_MODIFIED_TIME  | KAL_FS_PROP_ATOMIC_RENAME
          | KAL_FS_PROP_MAKE_LINKS | KAL_FS_PROP_EXECUTABLE
-         | KAL_FS_PROP_REMOVE_OPEN;
+         | KAL_FS_PROP_REMOVE_OPEN | KAL_FS_PROP_RESOLVED_NAME;
 }
 
 int kal_fs_open_dir(kal_dir base, const char* name, kal_uintptr len,
@@ -579,6 +580,33 @@ kal_intptr kal_fs_link_read(kal_dir base, const char* name, kal_uintptr len,
     char buf[kMaxName + 1];
     const ssize_t r = ::readlinkat(b, n, buf, sizeof(buf));
     if (r < 0) return oke::fail();
+    if (out != nullptr && cap != 0) {
+        const kal_uintptr take =
+            static_cast<kal_uintptr>(r) < cap ? static_cast<kal_uintptr>(r) : cap;
+        ::memcpy(out, buf, static_cast<size_t>(take));
+    }
+    return static_cast<kal_intptr>(r);
+}
+
+// THE NAME WITH EVERY LINK FOLLOWED (openkal 0.23) is the one the file system
+// keeps for a descriptor of it: opening follows every link, and Emscripten's
+// FS records the path it reached, which `/proc/self/fd/N' reads back. One
+// lookup, as the environment's own `realpath' of a file it opened is; the
+// full length is reported when it does not fit, as kal_fs_link_read does.
+kal_intptr kal_fs_resolved_name(kal_dir base, const char* name, kal_uintptr len,
+                                char* out, kal_uintptr cap) {
+    const int b = oke::unpack(base.h);
+    if (b < 0) return -kal_err_invalid;
+    char n[kMaxName + 1];
+    if (!cname(name, len, n)) return -kal_err_invalid;
+    const int fd = ::openat(b, n, O_RDONLY);
+    if (fd < 0) return oke::fail();
+    char link[32], buf[kMaxName + 1];
+    ::snprintf(link, sizeof link, "/proc/self/fd/%d", fd);
+    const ssize_t r = ::readlink(link, buf, sizeof buf);
+    const int why = errno;
+    ::close(fd);
+    if (r < 0) { errno = why; return oke::fail(); }
     if (out != nullptr && cap != 0) {
         const kal_uintptr take =
             static_cast<kal_uintptr>(r) < cap ? static_cast<kal_uintptr>(r) : cap;
