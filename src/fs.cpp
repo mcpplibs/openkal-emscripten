@@ -278,6 +278,9 @@ int kal_fs_preopen(kal_uintptr index, kal_dir* out,
 //   ATTENUATE        a handle with less (0.23, rights.h); READ_ONLY and
 //                    UNCHANGING state what this handle carries.
 //
+// HARD_LINKS is withheld (0.25): `linkat` reports EMLINK on MEMFS, so no file
+// receives a second name, and kal_fs_hard_link says so (below).
+//
 // LIST_INFO is withheld: the listing gives a name and a kind, and the rest of
 // an entry is asked of it (kal_fs_list_next_info).
 kal_uintptr kal_fs_props(kal_dir d) {
@@ -647,6 +650,19 @@ int kal_fs_link_create(kal_dir base, const char* name, kal_uintptr len,
     if (::symlinkat(t, b, n) != 0) return oke::last();
     wrote(b, n, len);
     return kal_ok;
+}
+
+// A SECOND NAME FOR A FILE (openkal 0.25). MEMFS stores one name for each
+// node (`linkat` reports EMLINK), so KAL_FS_PROP_HARD_LINKS is not claimed and
+// the request is refused after its arguments are examined, as clause 6.2 allows
+// for an operation a resource's property governs.
+int kal_fs_hard_link(kal_dir from, const char* a, kal_uintptr alen,
+                     kal_dir to,   const char* b, kal_uintptr blen) {
+    char na[kMaxName + 1], nb[kMaxName + 1];
+    if (oke::unpack(from.h) < 0 || oke::unpack(to.h) < 0
+        || !cname(a, alen, na) || !cname(b, blen, nb))
+        return kal_err_invalid;
+    return kal_err_not_supported;
 }
 
 kal_intptr kal_fs_link_read(kal_dir base, const char* name, kal_uintptr len,
