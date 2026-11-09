@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-emscripten"
-version     = "0.13.0"
+version     = "0.14.0"
 description = "An implementation of openkal for Emscripten, written ABOVE a C library rather than beneath one, because on this platform there is no kernel to issue calls to."
 license     = "Apache-2.0"
 
@@ -14,11 +14,17 @@ license     = "Apache-2.0"
 # may be built upon a C library, beneath one, or without one" --- and this is
 # the first implementation in the ecosystem to take the first of the three.
 provides    = ["mcpp:kernel-abi=openkal"]
+# WRITTEN ABOVE A C LIBRARY (openkal clause 2), SO IT IS NEVER BENEATH ONE THAT
+# NEEDS IT: a C library composed over openkal (openkal-musl) placed above this
+# implementation would call itself through it. The requirement states the
+# arrangement, and a build tool that checks that the requirements of the layers
+# form no cycle refuses the other one before anything is compiled.
+requires    = ["mcpp:c-abi"]
 authors     = ["mcpplibs"]
 repo        = "https://github.com/mcpplibs/openkal-emscripten"
 
 [dependencies]
-openkal = "0.24.0"
+openkal = "0.25.0"
 
 [build]
 # THE DIALECT FLAGS ARE THE SAME AS EVERY OTHER IMPLEMENTATION'S AND THE REASON

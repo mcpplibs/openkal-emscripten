@@ -40,8 +40,12 @@ env:
   # `em++`'s C compiler is `emcc` and not `em` (a C translation unit in the
   # conformance suite does not compile without that), and the wasm target rows
   # resolve the emsdk payload.
-  MCPP_VERSION: 2026.11.5.1
+  MCPP_VERSION: 2026.11.9.1
   XLINGS_VERSION: v2026.10.26.1
+  # The mtest engine the runs are reported with: the conformance suite's cases
+  # (tools/run-conformance.sh with MTEST set) and `mcpp test`'s store (target/mtest).
+  MTEST_VERSION: 0.5.2
+  MTEST_SHA256: be443f8c546b3f4628dcd3f1eb6f45b4d698a7f805232f966349faf8250863c6
   XLINGS_NON_INTERACTIVE: '1'
 
 jobs:
@@ -161,6 +165,8 @@ jobs:
           nm_bin=$(find "$HOME/.mcpp" "$HOME/.xlings" -name llvm-nm -path '*emsdk*' | head -1)
           [ -n "$nm_bin" ] || { echo "::error::no llvm-nm in the emsdk payload"; exit 1; }
           echo "NM=$nm_bin" >> "$GITHUB_ENV"
+
+      - uses: ./.github/actions/mtest
 
       # CONFORMANCE, FOR THE GROUPS THIS IMPLEMENTATION PROVIDES.
       #
@@ -406,3 +412,69 @@ jobs:
       - name: Restore the manifest
         if: always()
         run: git checkout -- mcpp.toml
+
+      - name: This package's test runs, kept for the report
+        if: always()
+        run: |
+          if [ -d target/mtest ]; then cp -R target/mtest "$RUNNER_TEMP/mcpp-test-runs"; fi
+
+      # A FAILED RUN, EXPLAINED: through the engine the suite's own text is not in
+      # the log, so the failing cases are named here with what each observed.
+      - name: The failing cases, explained
+        if: failure()
+        run: |
+          [ -n "${MTEST:-}" ] && [ -d .spec/conformance/.mtest ] || exit 0
+          ( cd .spec/conformance && "$MTEST" explain ) || true
+
+      # THE RUNS OF THIS JOB, REPORTED: the conformance suite's (one case per
+      # interface, its observations within it) and `mcpp test`'s (one case per
+      # test program), taken into one store, written as the job's summary and kept
+      # for the report over every job.
+      - name: The runs, reported
+        if: always()
+        run: |
+          [ -n "${MTEST:-}" ] || { echo "no mtest engine in this job"; exit 0; }
+          store="$(cygpath -u "$RUNNER_TEMP" 2> /dev/null || printf '%s' "$RUNNER_TEMP")/mtest-store"
+          mkdir -p "$store"; here="$PWD"
+          for from in "$here/.spec/conformance/.mtest" "$RUNNER_TEMP/mcpp-test-runs"; do
+            if [ -f "$from/index.ndjson" ]; then ( cd "$store" && "$MTEST" store import --from "$from" ); fi
+          done
+          [ -f "$store/.mtest/index.ndjson" ] || { echo "no run was kept"; exit 0; }
+          ( cd "$store" && "$MTEST" report --format md --group "$GITHUB_RUN_ID" ) >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mtest-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/mtest-store/.mtest
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # EVERY JOB'S RUNS AS ONE REPORT (`mtest ci report`, the workflow run's group).
+  report:
+    name: tests (report)
+    needs: conformance
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/mtest
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mtest-*
+          path: ${{ runner.temp }}/stores
+      - name: Every job's runs, reported together
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for store in "$RUNNER_TEMP"/stores/*/; do
+            [ -f "$store/index.ndjson" ] || continue
+            "$MTEST" store import --from "$store"
+            found=1
+          done
+          if [ "$found" = 0 ]; then echo "no job kept a run" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          "$MTEST" ci report --out "$RUNNER_TEMP/tests.md"

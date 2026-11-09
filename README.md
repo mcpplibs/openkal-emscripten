@@ -144,6 +144,13 @@ The continuous integration gate that already builds a task program under
 `-pthread` also asks each of its two contexts for its own region and asserts
 that the region contains a local of that context.
 
+## What 0.14 adds (openkal 0.25)
+
+`kal_fs_hard_link` is present and refuses: MEMFS stores one name for each node
+(`linkat` reports `EMLINK`), so `KAL_FS_PROP_HARD_LINKS` is not claimed. The
+manifest states `requires = ["mcpp:c-abi"]`: an implementation written above a C
+library is never placed beneath one that is composed over it.
+
 ## Conformance
 
 Measured 2026-10-31 against openkal 0.18.0, `emsdk 6.0.9`, run under node in
@@ -191,10 +198,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.24.0"
+openkal = "0.25.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.13.0"
+openkal-emscripten = "0.14.0"
 ```
 
 ## Licence
