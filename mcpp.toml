@@ -24,7 +24,7 @@ authors     = ["mcpplibs"]
 repo        = "https://github.com/mcpplibs/openkal-emscripten"
 
 [dependencies]
-openkal = { git = "https://github.com/mcpplibs/openkal.git", branch = "feat/0.25.0" }
+openkal = "0.25.0"
 
 [build]
 # THE DIALECT FLAGS ARE THE SAME AS EVERY OTHER IMPLEMENTATION'S AND THE REASON
