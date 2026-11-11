@@ -126,6 +126,38 @@ channel did exist (`[build] dialect_cxxflags`); what was missing was a way to
 scope it to one target and to let this feature state its requirement, which the
 typed table provides.
 
+## C's non-local jumps, and the same table's third key
+
+A `sigsetjmp`/`siglongjmp` pair is a **link-time** decision on this platform,
+for the reason threads are: `setjmp.h` compiles either way, and whether a jump
+over live frames works depends on which lowering the whole link chose -- the
+wasm exception runtime's tables and the symbols that land on them, or the
+host's JS trampoline that the invocation goes through when the link did not
+carry them. A jump through the trampoline is not a jump: the invocation leaves
+the module, and the frames it means to unwind over end it instead. So the
+switch belongs to the artefact, not to any package's own units, and the
+consumer states it in the same abi table threads use:
+
+```toml
+[target.'cfg(os = "emscripten")'.abi]
+longjmp = "wasm"
+```
+
+**Without the table, non-local jumps are not supported**, which is a boundary
+of the link and not a defect a package could patch: the lowering cannot be
+chosen after the module is instantiated, and no flag of this package's own
+translation units reaches the frames of the consumer's.
+
+The assertion is carried by a program rather than a claim: `probe/longjmp/` is
+a C program whose `siglongjmp` crosses two frames, each holding a `volatile`
+local the jump must not have restored, and continuous integration builds and
+runs it under node once an engine resolves the key. Measured 2026-11-11 with
+mcpp 2026.11.10.1 and `emsdk 6.0.9`: the engine has no member `longjmp` in the
+abi table (its members are `threads` and `exceptions`), and a manifest naming
+it is refused naming the member -- so the step reads that refusal and reports
+a skip, and the boundary above is the state until an engine that resolves the
+key is released and the same step turns green with it.
+
 ## The region a context stands on
 
 `kal_task_stack` reports the stack of the calling context, and this platform
@@ -143,6 +175,14 @@ thread was given.
 The continuous integration gate that already builds a task program under
 `-pthread` also asks each of its two contexts for its own region and asserts
 that the region contains a local of that context.
+
+## What 0.14.1 adds
+
+Nothing the twelve interfaces do. C's non-local jumps are stated as a
+link-time decision of the artefact -- `longjmp = "wasm"` in the same abi table
+threads use -- the probe program `probe/longjmp/` carries the assertion, and
+continuous integration runs it once an engine resolves the key, reporting a
+skip until one does.
 
 ## What 0.14 adds (openkal 0.25)
 
@@ -201,7 +241,7 @@ implementation in its source:
 openkal = "0.25.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.14.0"
+openkal-emscripten = "0.14.1"
 ```
 
 ## Licence
