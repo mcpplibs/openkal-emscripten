@@ -426,10 +426,11 @@ jobs:
       # gate that turns with it.
       - name: A C program that siglongjmps over two frames, when the engine knows the key
         run: |
-          set -uo pipefail
+          # GitHub runs this step under `bash -e`; the failure of the probe's
+          # build is an expected outcome the step reads, so the capture has to
+          # be part of the conditional, not an assignment errexit kills first.
           cd probe/longjmp
-          out=$(mcpp build --target wasm32-emscripten 2>&1)
-          if [ $? -ne 0 ]; then
+          if ! out=$(mcpp build --target wasm32-emscripten 2>&1); then
             if printf '%s\n' "$out" | grep -q "has no member 'longjmp'"; then
               echo "  -   this engine has no member 'longjmp' in the abi table; the probe is skipped"
               exit 0
