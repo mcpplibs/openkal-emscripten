@@ -1,0 +1,7 @@
+[package]
+name = "longjmp-probe"
+version = "0.1.0"
+description = "A C program that siglongjmps over two frames, carrying the ABI switch the lowering needs. Not part of the implementation's build: continuous integration builds it only when the engine resolves the key below, and the refusal an engine without the key produces is the skip."
+
+[target.'cfg(os = "emscripten")'.abi]
+longjmp = "wasm"

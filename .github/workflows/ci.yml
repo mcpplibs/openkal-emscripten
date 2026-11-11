@@ -14,6 +14,9 @@ name: CI
 #                 defect
 #   task gating   the ten kal_task_* symbols exist in a `-pthread` link and
 #                 in no other, and the interfaces word follows the link
+#   longjmp       a C program that siglongjmps over two frames runs under
+#                 node when the engine resolves the abi key, and the step
+#                 reports a skip while no engine does
 #
 # ONE TOOLCHAIN, NOT TWO, AND THAT IS A PROPERTY OF THE TARGET RATHER THAN A
 # GAP. Every other implementation here is built by a matrix of compiler
@@ -408,6 +411,39 @@ jobs:
           ( cd "$work" && timeout 300 mcpp run --target wasm32-emscripten ) \
             || { echo "::error::the task program did not exit 0 under node"; exit 1; }
           echo "  ok  a task starts, runs and joins under node, and both contexts are told their own stack"
+
+      # NON-LOCAL JUMPS, WHICH ARE A LINK-TIME DECISION THE WAY `-pthread` IS.
+      #
+      # `setjmp.h` compiles either way; whether a `siglongjmp` over live
+      # frames works depends on the lowering the whole link chose, so the
+      # switch belongs to the artefact and the probe's own root manifest
+      # states it (`longjmp = "wasm"`, the same table threads use). The
+      # engine under this pin does not know the member yet, and a manifest
+      # that names it is refused naming the member -- which is the skip:
+      # the step attempts the build, reads the refusal, and reports a skip
+      # rather than a green it did not earn. The day an engine resolves the
+      # key, the same build succeeds, the program runs, and this step is the
+      # gate that turns with it.
+      - name: A C program that siglongjmps over two frames, when the engine knows the key
+        run: |
+          set -uo pipefail
+          cd probe/longjmp
+          out=$(mcpp build --target wasm32-emscripten 2>&1)
+          if [ $? -ne 0 ]; then
+            if printf '%s\n' "$out" | grep -q "has no member 'longjmp'"; then
+              echo "  -   this engine has no member 'longjmp' in the abi table; the probe is skipped"
+              exit 0
+            fi
+            printf '%s\n' "$out"
+            echo "::error::the probe's build failed for a reason other than the missing member"
+            exit 1
+          fi
+          printf '%s\n' "$out" | tail -3
+          if ! ( timeout 300 mcpp run --target wasm32-emscripten ); then
+            echo "::error::the sigsetjmp/siglongjmp program did not exit 0 under node"
+            exit 1
+          fi
+          echo "  ok  a siglongjmp over two frames returns, with each frame's volatile kept"
 
       - name: Restore the manifest
         if: always()
