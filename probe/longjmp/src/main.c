@@ -5,7 +5,14 @@
  * register-cached int that came back as its pre-jump value would describe a
  * lowering that rewound the frames rather than unwound them, which is the
  * observation this program exists to make. A second jump goes back over both
- * frames to the origin, so each buffer is used once in each direction. */
+ * frames to the origin, so each buffer is used once in each direction.
+ *
+ * sigsetjmp and siglongjmp are POSIX's, and this C library declares them, as
+ * every C library does, only to a unit that asks for POSIX; the engine
+ * compiles C at the standard alone. The unit states what it asks for. (The
+ * probe was first compiled on 2026-11-12, by the first engine that resolves
+ * the key in its manifest; without this line it did not compile.) */
+#define _POSIX_C_SOURCE 200809L
 #include <setjmp.h>
 
 static volatile int visited;
