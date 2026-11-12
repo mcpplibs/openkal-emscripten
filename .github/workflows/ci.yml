@@ -15,8 +15,7 @@ name: CI
 #   task gating   the ten kal_task_* symbols exist in a `-pthread` link and
 #                 in no other, and the interfaces word follows the link
 #   longjmp       a C program that siglongjmps over two frames runs under
-#                 node when the engine resolves the abi key, and the step
-#                 reports a skip while no engine does
+#                 node (`[target.<sel>.abi] longjmp`, mcpp 2026.11.12.1)
 #
 # ONE TOOLCHAIN, NOT TWO, AND THAT IS A PROPERTY OF THE TARGET RATHER THAN A
 # GAP. Every other implementation here is built by a matrix of compiler
@@ -43,7 +42,7 @@ env:
   # `em++`'s C compiler is `emcc` and not `em` (a C translation unit in the
   # conformance suite does not compile without that), and the wasm target rows
   # resolve the emsdk payload.
-  MCPP_VERSION: 2026.11.9.1
+  MCPP_VERSION: 2026.11.12.1
   XLINGS_VERSION: v2026.10.26.1
   # The mtest engine the runs are reported with: the conformance suite's cases
   # (tools/run-conformance.sh with MTEST set) and `mcpp test`'s store (target/mtest).
@@ -418,25 +417,17 @@ jobs:
       # frames works depends on the lowering the whole link chose, so the
       # switch belongs to the artefact and the probe's own root manifest
       # states it (`longjmp = "wasm"`, the same table threads use). The
-      # engine under this pin does not know the member yet, and a manifest
-      # that names it is refused naming the member -- which is the skip:
-      # the step attempts the build, reads the refusal, and reports a skip
-      # rather than a green it did not earn. The day an engine resolves the
-      # key, the same build succeeds, the program runs, and this step is the
-      # gate that turns with it.
-      - name: A C program that siglongjmps over two frames, when the engine knows the key
+      # engine reads the member from mcpp 2026.11.12.1, which is this
+      # repository's pin: the probe builds and runs, and a build that fails is
+      # a failure. Until that engine the step read the refusal of the member
+      # and reported a skip.
+      - name: A C program that siglongjmps over two frames
         run: |
-          # GitHub runs this step under `bash -e`; the failure of the probe's
-          # build is an expected outcome the step reads, so the capture has to
-          # be part of the conditional, not an assignment errexit kills first.
           cd probe/longjmp
+          # Not through a pipe: the build's status is the step's.
           if ! out=$(mcpp build --target wasm32-emscripten 2>&1); then
-            if printf '%s\n' "$out" | grep -q "has no member 'longjmp'"; then
-              echo "  -   this engine has no member 'longjmp' in the abi table; the probe is skipped"
-              exit 0
-            fi
             printf '%s\n' "$out"
-            echo "::error::the probe's build failed for a reason other than the missing member"
+            echo "::error::the probe did not build"
             exit 1
           fi
           printf '%s\n' "$out" | tail -3
