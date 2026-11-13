@@ -16,6 +16,13 @@ translation is most of each function; what an above-libc implementation has to
 get right is the places where the C library's vocabulary and openkal's do
 **not** correspond, and those are the places the sources comment individually.
 
+## What 0.14.2 corrects
+
+The manifest declares `openkal = "^0.25.0"`. An implementation written against a
+patch release of the specification conforms to every later patch of that minor
+version (openkal clause 8); with an exact version, a consumer that names openkal
+0.25.1 could not resolve with this implementation.
+
 ## What it provides
 
 Twelve of the sixteen interfaces, in whole:
@@ -241,7 +248,7 @@ implementation in its source:
 openkal = "0.25.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.14.1"
+openkal-emscripten = "0.14.2"
 ```
 
 ## Licence
