@@ -451,8 +451,8 @@ jobs:
       - name: The failing cases, explained
         if: failure()
         run: |
-          [ -n "${MTEST:-}" ] && [ -d .spec/conformance/.mtest ] || exit 0
-          ( cd .spec/conformance && "$MTEST" explain ) || true
+          [ -n "${MTEST:-}" ] && [ -d .spec/tests/cts/.mtest ] || exit 0
+          ( cd .spec/tests/cts && "$MTEST" explain ) || true
 
       # THE RUNS OF THIS JOB, REPORTED: the conformance suite's (one case per
       # interface, its observations within it) and `mcpp test`'s (one case per
@@ -464,7 +464,7 @@ jobs:
           [ -n "${MTEST:-}" ] || { echo "no mtest engine in this job"; exit 0; }
           store="$(cygpath -u "$RUNNER_TEMP" 2> /dev/null || printf '%s' "$RUNNER_TEMP")/mtest-store"
           mkdir -p "$store"; here="$PWD"
-          for from in "$here/.spec/conformance/.mtest" "$RUNNER_TEMP/mcpp-test-runs"; do
+          for from in "$here/.spec/tests/cts/.mtest" "$RUNNER_TEMP/mcpp-test-runs"; do
             if [ -f "$from/index.ndjson" ]; then ( cd "$store" && "$MTEST" store import --from "$from" ); fi
           done
           [ -f "$store/.mtest/index.ndjson" ] || { echo "no run was kept"; exit 0; }
