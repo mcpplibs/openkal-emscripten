@@ -77,12 +77,14 @@ struct keyset {
 constexpr int kRoots = 64;
 constexpr uptr kBatch = 64 * 1024;
 
+// Every member's default is zero, so the table is zero-filled memory and not
+// bytes of the program (64 roots); `new_root' gives a live one its -1s.
 struct root {
     bool     live = false;
     int      refs = 0;
     unsigned flags = 0;
-    int      base = -1;        // a descriptor of the root, to list beneath
-    int      record = -1;      // opened to append
+    int      base = 0;         // a descriptor of the root, to list beneath (-1 when live and none)
+    int      record = 0;       // opened to append (-1 when live and none)
     char*    rprefix = nullptr;
     uptr     rplen = 0;
     keyset   seen;
@@ -94,9 +96,13 @@ struct root {
 };
 root g_roots[kRoots];
 
+// As the roots: zero by default, so 4096 entries cost the program no bytes
+// (with fd = -1 and root = -1 they were ~80 KiB of its data, every page of a
+// Web build carried them); `new_entry' gives a used one its root of -1.
 struct entry {
-    int      fd = -1;
-    int      root = -1;
+    bool     used = false;
+    int      fd = 0;
+    int      root = 0;
     unsigned flags = 0;
     char*    prefix = nullptr;
     uptr     plen = 0;
@@ -113,19 +119,27 @@ entry* entry_of(int fd) {
 entry* new_entry(int fd) {
     if (fd < 0 || fd >= kMaxDescriptor) return nullptr;
     for (int i = 0; i < kEntries; ++i)
-        if (g_entries[i].fd < 0) { g_entries[i].fd = fd; g_slot[fd] = static_cast<unsigned short>(i + 1); return &g_entries[i]; }
+        if (!g_entries[i].used) {
+            g_entries[i] = entry{.used = true, .fd = fd, .root = -1};
+            g_slot[fd] = static_cast<unsigned short>(i + 1);
+            return &g_entries[i];
+        }
     return nullptr;
 }
 
 void drop_entry(entry* e) {
     if (!e) return;
-    if (e->fd >= 0 && e->fd < kMaxDescriptor) g_slot[e->fd] = 0;
+    if (e->used && e->fd >= 0 && e->fd < kMaxDescriptor) g_slot[e->fd] = 0;
     ::free(e->prefix);
     *e = entry{};
 }
 
 int new_root() {
-    for (int i = 0; i < kRoots; ++i) if (!g_roots[i].live) { g_roots[i] = root{}; g_roots[i].live = true; return i; }
+    for (int i = 0; i < kRoots; ++i) if (!g_roots[i].live) {
+            g_roots[i] = root{};
+            g_roots[i].live = true, g_roots[i].base = -1, g_roots[i].record = -1;
+            return i;
+        }
     return -1;
 }
 

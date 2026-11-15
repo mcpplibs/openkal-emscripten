@@ -16,6 +16,15 @@ translation is most of each function; what an above-libc implementation has to
 get right is the places where the C library's vocabulary and openkal's do
 **not** correspond, and those are the places the sources comment individually.
 
+## What 0.14.3 corrects
+
+The descriptor-rights tables (4,096 entries and 64 roots) had members whose
+defaults were -1, so the whole tables were initialised data: about 80 KiB in
+every Web build's binary, though no entry is used until a descriptor is
+opened. Every member's default is now zero; a slot taken gives its sentinels.
+Measured with emsdk 6.0.9 at -O2: `g_entries` and `g_roots` move from `.data`
+to `.bss`. No behaviour changes.
+
 ## What 0.14.2 corrects
 
 The manifest declares `openkal = "^0.25.0"`. An implementation written against a
@@ -248,7 +257,7 @@ implementation in its source:
 openkal = "0.25.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.14.2"
+openkal-emscripten = "0.14.3"
 ```
 
 ## Licence
