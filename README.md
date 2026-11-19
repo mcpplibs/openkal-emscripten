@@ -16,6 +16,16 @@ translation is most of each function; what an above-libc implementation has to
 get right is the places where the C library's vocabulary and openkal's do
 **not** correspond, and those are the places the sources comment individually.
 
+## What 0.15 changes (openkal 0.26)
+
+Nothing but the specification's version: the manifest declares `openkal =
+"^0.26.0"`. openkal 0.26 requires two things of `openkal.process`, a start
+bounded by the environment alone (clause 7.6) and a unit claimed only where a
+reference can be made (clause 7.18), and this implementation does not provide
+that interface, so neither `kal_process_spawn` nor `kal_process_job_create` is
+defined. The arguments and the variables a program receives are read from the
+host's vector and from `environ` at each enquiry; no table bounds their number.
+
 ## What 0.14.3 corrects
 
 The descriptor-rights tables (4,096 entries and 64 roots) had members whose
@@ -254,10 +264,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.25.0"
+openkal = "0.26.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.14.3"
+openkal-emscripten = "0.15.0"
 ```
 
 ## Licence
