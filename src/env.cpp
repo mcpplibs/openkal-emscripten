@@ -164,20 +164,25 @@ kal_intptr kal_env_arg(kal_uintptr index, char* out, kal_uintptr cap) {
     return copy_out(name, ::strlen(name), out, cap);
 }
 
-// `getenv` TAKES A NUL-TERMINATED NAME AND openkal PASSES A LENGTH, so the
-// name is copied. Bounded rather than allocated: a variable name longer than
-// this is not a name, and an allocation here would make a lookup able to fail
-// for want of memory.
+// A NAME IS COMPARED IN PLACE, against each entry of `environ' (0.15.1). `getenv' takes a
+// terminated name and openkal passes a length, and until 0.15.0 the name was copied into a buffer of
+// 256 bytes, so a variable whose name was longer --- which the environment holds, enumerates and
+// passes on --- was refused with kal_err_invalid: a bound of this implementation's own below the
+// environment's. Comparing the entries is what `getenv' does, and needs neither the copy nor an
+// allocation that could fail a lookup for want of memory.
 kal_intptr kal_env_var(const char* name, kal_uintptr name_len,
                        char* out, kal_uintptr cap) {
-    if (name == nullptr) return -kal_err_invalid;
-    char key[256];
-    if (name_len == 0 || name_len >= sizeof(key)) return -kal_err_invalid;
-    ::memcpy(key, name, static_cast<size_t>(name_len));
-    key[name_len] = '\0';
-    const char* v = ::getenv(key);
-    if (v == nullptr) return -kal_err_not_found;
-    return copy_out(v, ::strlen(v), out, cap);
+    extern char** environ;
+    if (name == nullptr || name_len == 0) return -kal_err_invalid;
+    for (char** e = environ; e != nullptr && *e != nullptr; ++e) {
+        const char* entry = *e;
+        kal_uintptr k = 0;
+        while (k < name_len && entry[k] != '\0' && entry[k] == name[k]) ++k;
+        if (k != name_len || entry[k] != '=') continue;
+        const char* v = entry + k + 1;
+        return copy_out(v, ::strlen(v), out, cap);
+    }
+    return -kal_err_not_found;
 }
 
 // `environ` IS THE ENUMERATION, AND IT IS THE ONLY ONE. POSIX offers no

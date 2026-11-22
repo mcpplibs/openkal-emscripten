@@ -16,6 +16,17 @@ translation is most of each function; what an above-libc implementation has to
 get right is the places where the C library's vocabulary and openkal's do
 **not** correspond, and those are the places the sources comment individually.
 
+## What 0.15.1 corrects
+
+`kal_env_var` compares the name it is given with each entry of `environ` in
+place. Until 0.15.0 it copied the name into a buffer of 256 bytes for `getenv`,
+and refused a longer name with `kal_err_invalid`: a variable the environment
+holds, enumerates through `kal_env_var_at` and passes on could not be looked up
+by its name, a bound of the implementation's own below the environment's
+(clause 7.6 states the same of a start). Measured under node: a variable with a
+name of 300 bytes, set by `setenv`, is found by 0.15.1 and refused by 0.15.0. CI
+runs that program.
+
 ## What 0.15 changes (openkal 0.26)
 
 Nothing but the specification's version: the manifest declares `openkal =
@@ -267,7 +278,7 @@ implementation in its source:
 openkal = "0.26.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.15.0"
+openkal-emscripten = "0.15.1"
 ```
 
 ## Licence
