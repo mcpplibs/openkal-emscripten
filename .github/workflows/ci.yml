@@ -248,8 +248,9 @@ jobs:
 
       # A NAME IS COMPARED IN PLACE (0.15.1): a variable whose name is 300 bytes, set by the C
       # library, is found by kal_env_var. Until 0.15.0 the name was copied into 256 bytes and a
-      # longer one was refused with kal_err_invalid.
-      - name: A variable with a name of 300 bytes is found by its name
+      # longer one was refused with kal_err_invalid; and kal_env_var_at answered the whole entry
+      # where it answers the name.
+      - name: A variable with a name of 300 bytes is found by its name, and a name by its position
         run: |
           set -euo pipefail
           work="$RUNNER_TEMP/longname"
@@ -274,7 +275,12 @@ jobs:
             if (setenv(name, "long", 1) != 0) return 2;
             char v[8];
             const kal_intptr n = kal_env_var(name, 300, v, sizeof v);
-            return n == 4 && memcmp(v, "long", 4) == 0 ? 0 : 1;
+            if (!(n == 4 && memcmp(v, "long", 4) == 0)) return 1;
+            // The name at a position, which is found again by that name.
+            char first[512];
+            const kal_intptr f = kal_env_var_at(0, first, sizeof first);
+            if (f <= 0 || f >= (kal_intptr)sizeof first || memchr(first, '=', (size_t)f)) return 3;
+            return kal_env_var(first, (kal_uintptr)f, nullptr, 0) >= 0 ? 0 : 4;
           }
           CPP
           ( cd "$work" && timeout 300 mcpp run --target wasm32-emscripten ) \

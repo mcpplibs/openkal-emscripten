@@ -27,6 +27,11 @@ by its name, a bound of the implementation's own below the environment's
 name of 300 bytes, set by `setenv`, is found by 0.15.1 and refused by 0.15.0. CI
 runs that program.
 
+`kal_env_var_at` answers the name at a position, as `openkal/env.h` states. Until
+0.15.0 it answered the whole `NAME=value`, which `kal_env_var` then did not find;
+the specification's suite of openkal 0.26 observes the pair (its first
+variable, looked up again by its name).
+
 ## What 0.15 changes (openkal 0.26)
 
 Nothing but the specification's version: the manifest declares `openkal =

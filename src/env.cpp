@@ -202,8 +202,13 @@ kal_intptr kal_env_var_at(kal_uintptr index, char* out, kal_uintptr cap) {
     kal_uintptr n = 0;
     while (environ[n] != nullptr) ++n;
     if (index >= n) return -kal_err_not_found;
+    // THE NAME, NOT THE ENTRY (0.15.1). openkal.env answers a name at a position and the value
+    // through kal_env_var; until 0.15.0 this answered the whole `NAME=value', which looked up
+    // again by kal_env_var was not found (the specification's suite observes the pair).
     const char* s = environ[index];
-    return copy_out(s, ::strlen(s), out, cap);
+    kal_uintptr k = 0;
+    while (s[k] != '\0' && s[k] != '=') ++k;
+    return copy_out(s, k, out, cap);
 }
 
 // THE IMAGE, THE LOADER AND THE SYSTEM (version 0.17).
