@@ -16,6 +16,32 @@ translation is most of each function; what an above-libc implementation has to
 get right is the places where the C library's vocabulary and openkal's do
 **not** correspond, and those are the places the sources comment individually.
 
+## What 0.15.1 corrects
+
+`kal_env_var` compares the name it is given with each entry of `environ` in
+place. Until 0.15.0 it copied the name into a buffer of 256 bytes for `getenv`,
+and refused a longer name with `kal_err_invalid`: a variable the environment
+holds, enumerates through `kal_env_var_at` and passes on could not be looked up
+by its name, a bound of the implementation's own below the environment's
+(clause 7.6 states the same of a start). Measured under node: a variable with a
+name of 300 bytes, set by `setenv`, is found by 0.15.1 and refused by 0.15.0. CI
+runs that program.
+
+`kal_env_var_at` answers the name at a position, as `openkal/env.h` states. Until
+0.15.0 it answered the whole `NAME=value`, which `kal_env_var` then did not find;
+the specification's suite of openkal 0.26 observes the pair (its first
+variable, looked up again by its name).
+
+## What 0.15 changes (openkal 0.26)
+
+Nothing but the specification's version: the manifest declares `openkal =
+"^0.26.0"`. openkal 0.26 requires two things of `openkal.process`, a start
+bounded by the environment alone (clause 7.6) and a unit claimed only where a
+reference can be made (clause 7.18), and this implementation does not provide
+that interface, so neither `kal_process_spawn` nor `kal_process_job_create` is
+defined. The arguments and the variables a program receives are read from the
+host's vector and from `environ` at each enquiry; no table bounds their number.
+
 ## What 0.14.3 corrects
 
 The descriptor-rights tables (4,096 entries and 64 roots) had members whose
@@ -254,10 +280,10 @@ implementation in its source:
 
 ```toml
 [dependencies]
-openkal = "0.25.0"
+openkal = "0.26.0"
 
 [target.'cfg(os = "emscripten")'.dependencies]
-openkal-emscripten = "0.14.3"
+openkal-emscripten = "0.15.1"
 ```
 
 ## Licence

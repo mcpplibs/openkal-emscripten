@@ -246,6 +246,47 @@ jobs:
             exit 1
           fi
 
+      # A NAME IS COMPARED IN PLACE (0.15.1): a variable whose name is 300 bytes, set by the C
+      # library, is found by kal_env_var. Until 0.15.0 the name was copied into 256 bytes and a
+      # longer one was refused with kal_err_invalid; and kal_env_var_at answered the whole entry
+      # where it answers the name.
+      - name: A variable with a name of 300 bytes is found by its name, and a name by its position
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/longname"
+          rm -rf "$work"; mkdir -p "$work/src"
+          impl="$(pwd)"
+          cat > "$work/mcpp.toml" << TOML
+          [package]
+          name = "longname"
+          version = "0.1.0"
+
+          [dependencies]
+          openkal = { path = "$impl/.spec" }
+          openkal-emscripten = { path = "$impl" }
+          TOML
+          cat > "$work/src/main.cpp" << 'CPP'
+          #include <stdlib.h>
+          #include <string.h>
+          import openkal.env;
+          int main() {
+            static char name[301];
+            memset(name, 'N', 300);
+            if (setenv(name, "long", 1) != 0) return 2;
+            char v[8];
+            const kal_intptr n = kal_env_var(name, 300, v, sizeof v);
+            if (!(n == 4 && memcmp(v, "long", 4) == 0)) return 1;
+            // The name at a position, which is found again by that name.
+            char first[512];
+            const kal_intptr f = kal_env_var_at(0, first, sizeof first);
+            if (f <= 0 || f >= (kal_intptr)sizeof first || memchr(first, '=', (size_t)f)) return 3;
+            return kal_env_var(first, (kal_uintptr)f, nullptr, 0) >= 0 ? 0 : 4;
+          }
+          CPP
+          ( cd "$work" && timeout 300 mcpp run --target wasm32-emscripten ) \
+            || { echo "::error::a variable with a name of 300 bytes was not found by its name"; exit 1; }
+          echo "  ok  a variable with a name of 300 bytes is found by its name"
+
       - name: Point at the specification's working tree
         run: |
           # run-conformance.sh has already done this; it is repeated because a
